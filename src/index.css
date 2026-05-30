@@ -1,0 +1,73 @@
+:root {
+  /* Warm, editorial palette for an interiors firm */
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --ink: #2b2722;
+  --ink-soft: #6f675c;
+  --muted: #9a9081;
+  --line: #e4ded4;
+  --accent: #8a7a5c;       /* warm bronze */
+  --accent-dark: #6d6047;
+  --danger: #b4533f;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(43, 39, 34, 0.08), 0 8px 24px rgba(43, 39, 34, 0.06);
+
+  --serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+a {
+  color: var(--accent-dark);
+}
+
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12.5px;
+}
