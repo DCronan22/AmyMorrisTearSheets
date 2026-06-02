@@ -1,9 +1,11 @@
-import type { Project } from "../types";
+import type { Item, Project } from "../types";
 import { formatPrice, lineTotal, projectTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
 
 interface Props {
   project: Project;
   firmName: string;
+  /** Items to print; defaults to the whole project. */
+  items?: Item[];
 }
 
 /**
@@ -11,8 +13,8 @@ interface Props {
  * during printing, so the browser's "Save as PDF" produces clean tear sheets —
  * one item per printed card, grouped by room.
  */
-export default function PrintView({ project, firmName }: Props) {
-  const items = project.items;
+export default function PrintView({ project, firmName, items: itemsProp }: Props) {
+  const items = itemsProp ?? project.items;
   const rooms = groupByRoom(items);
   const total = projectTotal(items);
 

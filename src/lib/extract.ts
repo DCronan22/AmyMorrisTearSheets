@@ -13,7 +13,6 @@ export interface AutofillFields {
   color?: string;
   imageUrl?: string;
   productUrl?: string;
-  notes?: string;
 }
 
 export interface AutofillResult {

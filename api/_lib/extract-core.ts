@@ -23,7 +23,6 @@ export interface ExtractedFields {
   color?: string;
   imageUrl?: string;
   productUrl?: string;
-  notes?: string;
 }
 
 export interface ExtractResult {
@@ -191,37 +190,75 @@ function collectProducts(node: unknown, out: Record<string, unknown>[]): void {
   if (types.some((x) => /product/i.test(x))) out.push(o);
 }
 
+/** Render a schema.org QuantitativeValue (or plain string) to "value unit". */
+function quantityToStr(v: unknown): string | undefined {
+  if (v === null || v === undefined) return undefined;
+  if (typeof v === "object" && !Array.isArray(v)) {
+    const ov = v as Record<string, unknown>;
+    const val = firstString(ov.value, ov["@value"]);
+    if (!val) return undefined;
+    const unit = firstString(ov.unitText, ov.unitCode);
+    return unit ? `${val} ${unit}` : val;
+  }
+  return firstString(v);
+}
+
 function dimsFromProduct(o: Record<string, unknown>): string | undefined {
-  // Try schema.org width/height/depth, else additionalProperty rows.
-  const dim = (k: string) => {
-    const v = o[k];
-    if (!v) return undefined;
-    if (typeof v === "object") {
-      const ov = v as Record<string, unknown>;
-      const val = firstString(ov.value, ov["@value"]);
-      const unit = firstString(ov.unitText, ov.unitCode);
-      return val ? `${val}${unit ? `${unit}` : ""}` : undefined;
-    }
-    return firstString(v);
-  };
-  const w = dim("width");
-  const h = dim("height");
-  const d = dim("depth");
+  // Try schema.org width/height/depth as QuantitativeValue or string.
+  const w = quantityToStr(o.width);
+  const h = quantityToStr(o.height);
+  const d = quantityToStr(o.depth);
   const parts = [w && `W ${w}`, d && `D ${d}`, h && `H ${h}`].filter(Boolean);
   if (parts.length) return parts.join(" × ");
+  return undefined;
+}
 
-  const add = o.additionalProperty;
-  if (Array.isArray(add)) {
-    for (const row of add) {
-      const r = row as Record<string, unknown>;
-      const name = firstString(r.name)?.toLowerCase() || "";
-      if (/dimension|size|measure/.test(name)) {
-        const val = firstString(r.value);
-        if (val) return val;
-      }
+/** Extract price from a schema.org offers object/array (incl. priceSpecification). */
+function priceFromOffers(offers: unknown): number | null {
+  const offer = Array.isArray(offers) ? offers[0] : offers;
+  if (!offer || typeof offer !== "object") return null;
+  const o = offer as Record<string, unknown>;
+  let raw: unknown = o.price ?? o.lowPrice ?? o.highPrice;
+  if (raw === undefined || raw === null || raw === "") {
+    const spec = o.priceSpecification;
+    const s = Array.isArray(spec) ? spec[0] : spec;
+    if (s && typeof s === "object") {
+      const so = s as Record<string, unknown>;
+      raw = so.price ?? so.lowPrice ?? so.highPrice;
     }
   }
-  return undefined;
+  return toPrice(raw);
+}
+
+/**
+ * Read schema.org additionalProperty (PropertyValue rows) and map recognised
+ * names into the matching ExtractedFields, without overwriting existing values.
+ */
+function applyAdditionalProperties(
+  o: Record<string, unknown>,
+  out: ExtractedFields
+): void {
+  const add = o.additionalProperty;
+  if (!Array.isArray(add)) return;
+  for (const row of add) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const name = (firstString(r.name) || "").toLowerCase();
+    const value = firstString(r.value, r["@value"]);
+    if (!name || !value) continue;
+    if (!out.dimensions && /dimension|size|measure/.test(name)) {
+      out.dimensions = value;
+    } else if (!out.material && /material|finish|fabric/.test(name)) {
+      out.material = value;
+    } else if (!out.color && /colou?r(way)?/.test(name)) {
+      out.color = value;
+    } else if (
+      !out.collection &&
+      /collection|line|series|pattern/.test(name)
+    ) {
+      out.collection = value;
+    }
+  }
 }
 
 function parseJsonLd(root: ReturnType<typeof parse>): ExtractedFields {
@@ -242,23 +279,22 @@ function parseJsonLd(root: ReturnType<typeof parse>): ExtractedFields {
   const p = products[0];
 
   out.name = firstString(p.name);
+  // brand/manufacturer: string or { name }
   out.vendor = firstString(p.brand, p.manufacturer);
-  out.sku = firstString(p.sku, p.mpn, p.productID, p.gtin13);
+  out.sku = firstString(p.sku, p.mpn, p.productID, p.gtin13, p.gtin);
   out.color = firstString(p.color);
   out.material = firstString(p.material);
   out.category = firstString(p.category);
-  out.notes = firstString(p.description);
   out.imageUrl = firstString(p.image);
   const dims = dimsFromProduct(p);
   if (dims) out.dimensions = dims;
 
-  // offers can be an object or an array of offers
-  const offers = p.offers;
-  const offer = Array.isArray(offers) ? offers[0] : offers;
-  if (offer && typeof offer === "object") {
-    const o = offer as Record<string, unknown>;
-    out.price = toPrice(o.price ?? o.lowPrice ?? o.highPrice);
-  }
+  // offers can be an object or an array, possibly with priceSpecification.
+  out.price = priceFromOffers(p.offers);
+
+  // additionalProperty rows fill any still-blank recognised fields.
+  applyAdditionalProperties(p, out);
+
   return out;
 }
 
@@ -284,18 +320,73 @@ function parseOpenGraph(root: ReturnType<typeof parse>): ExtractedFields {
     'meta[property="og:image"]',
     'meta[property="og:image:secure_url"]',
     'meta[name="twitter:image"]',
+    'meta[name="twitter:image:src"]',
   ]);
-  out.vendor = metaContent(root, ['meta[property="og:site_name"]']);
-  out.notes = metaContent(root, [
-    'meta[property="og:description"]',
-    'meta[name="description"]',
+  out.vendor = metaContent(root, [
+    'meta[property="product:brand"]',
+    'meta[property="og:brand"]',
+    'meta[property="og:site_name"]',
   ]);
   const price = metaContent(root, [
     'meta[property="product:price:amount"]',
     'meta[property="og:price:amount"]',
+    'meta[property="product:price"]',
+    'meta[name="twitter:data1"]',
   ]);
   if (price) out.price = toPrice(price);
   return out;
+}
+
+/** HTML5 microdata: elements carrying itemprop="..." (content attr or text). */
+function parseMicrodata(root: ReturnType<typeof parse>): ExtractedFields {
+  const out: ExtractedFields = {};
+  const read = (prop: string): string | undefined => {
+    const el = root.querySelector(`[itemprop="${prop}"]`);
+    if (!el) return undefined;
+    // For meta/link/img the value lives in an attribute; otherwise use text.
+    const attr =
+      el.getAttribute("content") ||
+      el.getAttribute("src") ||
+      el.getAttribute("href");
+    const val = (attr || el.textContent || "").trim();
+    return val || undefined;
+  };
+  out.name = read("name");
+  out.vendor = read("brand");
+  out.sku = read("sku") || read("mpn") || read("productID");
+  out.color = read("color");
+  out.material = read("material");
+  out.category = read("category");
+  out.imageUrl = read("image");
+  const price = read("price") || read("lowPrice");
+  if (price) out.price = toPrice(price);
+  return out;
+}
+
+/**
+ * Conservative breadcrumb → category heuristic, used only as a last resort.
+ * Takes the last meaningful crumb (excluding Home and the product itself).
+ */
+function categoryFromBreadcrumb(
+  root: ReturnType<typeof parse>
+): string | undefined {
+  const containers = root.querySelectorAll(
+    'nav[aria-label*="readcrumb" i], [class*="breadcrumb" i], [id*="breadcrumb" i], ol.breadcrumb, [itemtype*="BreadcrumbList" i]'
+  );
+  for (const c of containers) {
+    const links = c.querySelectorAll("a");
+    const crumbs = links
+      .map((a) => a.textContent.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .filter((t) => !/^home$/i.test(t));
+    if (crumbs.length >= 2) {
+      // Last link is usually a parent category (the product itself is often
+      // plain text, not a link). Keep it short to avoid grabbing a title.
+      const last = crumbs[crumbs.length - 1];
+      if (last && last.length <= 40) return last;
+    }
+  }
+  return undefined;
 }
 
 function mergeFields(
@@ -317,12 +408,21 @@ export function parseProductHtml(html: string, finalUrl: string): ExtractResult 
 
   const jsonLd = parseJsonLd(root);
   const og = parseOpenGraph(root);
-  const fields = mergeFields(jsonLd, og);
+  const microdata = parseMicrodata(root);
+
+  // Priority: JSON-LD (richest) > microdata > OpenGraph/meta.
+  const fields = mergeFields(jsonLd, mergeFields(microdata, og));
 
   // Fall back to <title> for the name if nothing else worked.
   if (!fields.name) {
     const title = root.querySelector("title")?.textContent?.trim();
     if (title) fields.name = title.split(/[|–—-]/)[0].trim();
+  }
+
+  // Last-resort, conservative category from a breadcrumb trail.
+  if (!fields.category) {
+    const cat = categoryFromBreadcrumb(root);
+    if (cat) fields.category = cat;
   }
 
   // Resolve relative image URLs against the page.
@@ -334,11 +434,6 @@ export function parseProductHtml(html: string, finalUrl: string): ExtractResult 
     }
   }
   fields.productUrl = finalUrl;
-
-  // Trim an overly long description to a usable note.
-  if (fields.notes && fields.notes.length > 600) {
-    fields.notes = fields.notes.slice(0, 597).trimEnd() + "…";
-  }
 
   const hasData = Object.values(fields).some(
     (v) => v !== undefined && v !== null && v !== "" && v !== finalUrl

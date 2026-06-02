@@ -39,7 +39,6 @@ export default function ItemEditor({ item, onSave, onClose, onDelete }: Props) {
       put("dimensions", fields.dimensions);
       put("material", fields.material);
       put("color", fields.color);
-      put("notes", fields.notes);
       put("imageUrl", fields.imageUrl);
       put("productUrl", fields.productUrl);
       if (typeof fields.price === "number") next.price = fields.price;

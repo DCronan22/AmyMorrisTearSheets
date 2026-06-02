@@ -5,10 +5,18 @@ interface Props {
   items: Item[];
   onEdit: (item: Item) => void;
   onPresentFrom: (index: number) => void;
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
 }
 
 /** Responsive grid of item cards — the browsable web gallery. */
-export default function Gallery({ items, onEdit, onPresentFrom }: Props) {
+export default function Gallery({
+  items,
+  onEdit,
+  onPresentFrom,
+  selected,
+  onToggleSelect,
+}: Props) {
   if (items.length === 0) {
     return (
       <div className="empty">
@@ -24,13 +32,28 @@ export default function Gallery({ items, onEdit, onPresentFrom }: Props) {
     <div className="gallery">
       {items.map((it, i) => {
         const total = lineTotal(it);
+        const isSelected = selected.has(it.id);
         return (
-          <article className="card" key={it.id}>
+          <article
+            className={`card${isSelected ? " card-selected" : ""}`}
+            key={it.id}
+          >
             <div
               className="card-img"
               onClick={() => onPresentFrom(i)}
               title="Click to present"
             >
+              <label
+                className="card-check"
+                title={isSelected ? "Deselect item" : "Select item"}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => onToggleSelect(it.id)}
+                />
+              </label>
               <img
                 src={safeImageUrl(it.imageUrl)}
                 alt={it.name}

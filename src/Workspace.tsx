@@ -48,6 +48,9 @@ export default function Workspace({
   const [collectionFilter, setCollectionFilter] = useState("");
   const [search, setSearch] = useState("");
   const [editingHeader, setEditingHeader] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // The set of items to render in the print layout (selected subset or all).
+  const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
 
   // Initial load of this firm's projects from Supabase.
   useEffect(() => {
@@ -90,6 +93,58 @@ export default function Workspace({
       return true;
     });
   }, [project, roomFilter, categoryFilter, vendorFilter, collectionFilter, search]);
+
+  // --- Selection ------------------------------------------------------------
+
+  // Items that exist in the project AND are selected (ignores stale ids).
+  const selectedItems = useMemo(
+    () => (project ? project.items.filter((it) => selectedIds.has(it.id)) : []),
+    [project, selectedIds]
+  );
+  const selectedCount = selectedItems.length;
+  // How many of the currently visible (filtered) items are selected.
+  const filteredSelectedCount = filtered.filter((it) =>
+    selectedIds.has(it.id)
+  ).length;
+  const allFilteredSelected =
+    filtered.length > 0 && filteredSelectedCount === filtered.length;
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllFiltered() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const it of filtered) next.add(it.id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  // Set the print subset, print, then reset once printing finishes.
+  function print(items?: Item[]) {
+    setPrintItems(items);
+    const reset = () => {
+      setPrintItems(undefined);
+      window.onafterprint = null;
+    };
+    window.onafterprint = reset;
+    // Defer so the print layout re-renders with the chosen subset first.
+    setTimeout(() => {
+      window.print();
+      // Fallback in case onafterprint never fires (some browsers/dialogs).
+      setTimeout(reset, 1000);
+    }, 0);
+  }
 
   // --- Persistence ----------------------------------------------------------
 
@@ -267,10 +322,18 @@ export default function Workspace({
             </button>
             <button
               className="btn"
-              onClick={() => window.print()}
+              onClick={() => print()}
               disabled={!project.items.length}
             >
               🖶 Print / PDF
+            </button>
+            <button
+              className="btn"
+              onClick={() => print(selectedItems)}
+              disabled={selectedCount === 0}
+              title="Print only the selected items"
+            >
+              🖶 Print selected ({selectedCount})
             </button>
             <span className="divider" />
             <div className="menu">
@@ -282,6 +345,14 @@ export default function Workspace({
                   }
                 >
                   Export items (.xlsx)
+                </button>
+                <button
+                  disabled={selectedCount === 0}
+                  onClick={() =>
+                    exportItemsToSpreadsheet(selectedItems, project.name)
+                  }
+                >
+                  Export selected ({selectedCount}) (.xlsx)
                 </button>
                 <button onClick={() => exportProjectFile(backupData)}>
                   Export backup (.json)
@@ -411,9 +482,31 @@ export default function Workspace({
           </span>
         </section>
 
+        <section className="selectbar">
+          <button
+            className="btn ghost small"
+            onClick={selectAllFiltered}
+            disabled={filtered.length === 0 || allFilteredSelected}
+          >
+            Select all{filtered.length ? ` (${filtered.length})` : ""}
+          </button>
+          <button
+            className="btn ghost small"
+            onClick={clearSelection}
+            disabled={selectedCount === 0}
+          >
+            Clear
+          </button>
+          <span className="muted small select-count">
+            {selectedCount} selected
+          </span>
+        </section>
+
         <main className="content">
           <Gallery
             items={filtered}
+            selected={selectedIds}
+            onToggleSelect={toggleSelect}
             onEdit={setEditing}
             onPresentFrom={(i) => {
               const item = filtered[i];
@@ -429,7 +522,7 @@ export default function Workspace({
       </div>
 
       {/* Print layout lives outside .no-print and is shown only when printing */}
-      <PrintView project={project} firmName={firm.name} />
+      <PrintView project={project} firmName={firm.name} items={printItems} />
 
       {editing && (
         <ItemEditor
