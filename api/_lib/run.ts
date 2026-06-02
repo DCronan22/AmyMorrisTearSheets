@@ -1,13 +1,13 @@
 // Shared extraction orchestrator, used by both the Vercel serverless handler
 // (api/extract.ts) and the local Vite dev middleware. Auth + rate limiting are
 // handled by the callers before this runs.
-import { extractFromUrl, fetchReadableText } from "./extract-core";
-import type { ExtractedFields, ExtractResult } from "./extract-core";
+import { extractFromUrl, fetchReadableText } from "./extract-core.js";
+import type { ExtractedFields, ExtractResult } from "./extract-core.js";
 import {
   aiExtractAvailable,
   aiExtractFromImage,
   aiExtractFromText,
-} from "./ai-extract";
+} from "./ai-extract.js";
 
 export interface ExtractRequest {
   url?: string;

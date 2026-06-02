@@ -10,7 +10,7 @@
 //   - NEVER send firm/client PII — inputs here are vendor product pages/images only
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { ExtractedFields } from "./extract-core";
+import type { ExtractedFields } from "./extract-core.js";
 
 // Haiku is the deliberate, cost-driven choice for field extraction.
 const MODEL = "claude-haiku-4-5";

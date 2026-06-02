@@ -1,4 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+// NOTE: relative imports MUST include the .js extension — Vercel emits each
+// api/ file as a separate ESM module, and Node ESM requires explicit extensions.
+import { getUserId } from "./_lib/auth.js";
+import { runExtraction } from "./_lib/run.js";
+import type { ExtractRequest } from "./_lib/run.js";
 
 // Best-effort in-memory rate limiter (per warm instance).
 const WINDOW_MS = 60_000;
@@ -17,34 +22,25 @@ function rateLimited(userId: string): boolean {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed." });
+  }
+
+  const userId = await getUserId(req.headers.authorization);
+  if (!userId) return res.status(401).json({ error: "Not authenticated." });
+
+  if (rateLimited(userId)) {
+    return res
+      .status(429)
+      .json({ error: "Too many requests — slow down a moment." });
+  }
+
+  const body = (req.body ?? {}) as ExtractRequest;
   try {
-    if (req.method !== "POST") {
-      res.setHeader("Allow", "POST");
-      return res.status(405).json({ error: "Method not allowed." });
-    }
-
-    // Imported lazily inside the handler so any load-time failure is caught and
-    // surfaced as JSON instead of an opaque platform 500.
-    const { getUserId } = await import("./_lib/auth");
-    const { runExtraction } = await import("./_lib/run");
-
-    const userId = await getUserId(req.headers.authorization);
-    if (!userId) return res.status(401).json({ error: "Not authenticated." });
-
-    if (rateLimited(userId)) {
-      return res
-        .status(429)
-        .json({ error: "Too many requests — slow down a moment." });
-    }
-
-    const body = req.body ?? {};
     const { status, payload } = await runExtraction(body);
     return res.status(status).json(payload);
-  } catch (e) {
-    // TEMP DIAGNOSTIC: surface the real error so we can fix the deploy.
-    return res.status(500).json({
-      error: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined,
-    });
+  } catch {
+    return res.status(500).json({ error: "Extraction failed unexpectedly." });
   }
 }
