@@ -831,3 +831,281 @@
     print-color-adjust: exact;
   }
 }
+
+/* ============================================================
+   Auth, loader & subscription gates
+   ============================================================ */
+
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 32px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-title {
+  font-family: var(--serif);
+  font-size: 28px;
+  margin: 0 0 18px;
+  color: var(--ink);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.auth-form input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-submit {
+  margin-top: 4px;
+  width: 100%;
+  justify-content: center;
+  padding: 11px;
+  font-size: 15px;
+}
+
+.auth-switch {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Loader -------------------------------------------------------- */
+.loader {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.save-banner {
+  max-width: 1240px;
+  margin: 8px auto 0;
+}
+
+/* ============================================================
+   Admin panel
+   ============================================================ */
+
+.admin {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 20px 80px;
+}
+
+.admin-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.admin-head h1 {
+  font-family: var(--serif);
+  font-size: 30px;
+  margin: 0;
+}
+
+.admin-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-section {
+  margin-top: 28px;
+}
+
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.admin-section h2 {
+  font-family: var(--serif);
+  font-size: 22px;
+  margin: 0;
+}
+
+.admin-add {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-add input {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 200px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.admin-table th {
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-inline {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.admin-table td > .admin-inline:first-child {
+  margin-left: 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-active {
+  background: #e3efe2;
+  color: #2f6b34;
+}
+
+.badge-trial {
+  background: #eef0f6;
+  color: #4a5482;
+}
+
+.badge-suspended {
+  background: #f6ece2;
+  color: #9a5a2a;
+}
+
+.badge-canceled {
+  background: #f6e4e1;
+  color: var(--danger);
+}
+
+/* --- Auto-fill (paste-a-link) bar in the item editor ----------- */
+.autofill-bar {
+  margin: 4px 0 18px;
+  padding: 12px;
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+.autofill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.autofill-spark {
+  font-size: 18px;
+  line-height: 1;
+}
+.autofill-input {
+  flex: 1;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+.autofill-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.status-ok.small,
+.status-err.small {
+  margin: 8px 2px 0;
+  font-size: 12.5px;
+}

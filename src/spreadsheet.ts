@@ -9,6 +9,7 @@ const HEADER_ALIASES: Record<keyof Item, string[]> = {
   id: [],
   name: ["item", "name", "product", "description", "item name", "product name"],
   vendor: ["vendor", "manufacturer", "supplier", "brand", "source"],
+  collection: ["collection", "line", "product line", "series", "family", "pattern"],
   category: ["category", "type", "item type", "class"],
   room: ["room", "space", "location", "area"],
   sku: ["sku", "item number", "item #", "model", "model number", "item no", "style"],
@@ -46,13 +47,13 @@ function buildColumnMap(headers: string[]): Map<number, keyof Item> {
 function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined || raw === "") return null;
   if (typeof raw === "number") return raw;
-  const n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
+  const n = parseFloat(String(raw).replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? n : null;
 }
 
 function parseQty(raw: unknown): number {
   if (raw === null || raw === undefined || raw === "") return 1;
-  const n = parseInt(String(raw).replace(/[^0-9\-]/g, ""), 10);
+  const n = parseInt(String(raw).replace(/[^0-9-]/g, ""), 10);
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
@@ -112,6 +113,7 @@ export function downloadTemplate(): void {
   const example = [
     "Lawson Sofa",
     "Lee Industries",
+    "Aspen",
     "Seating",
     "Living Room",
     "3935-03",
@@ -151,7 +153,7 @@ export function exportItemsToSpreadsheet(items: Item[], projectName: string): vo
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Items");
   const out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const safe = projectName.replace(/[^\w\-]+/g, "-") || "tear-sheet";
+  const safe = projectName.replace(/[^\w-]+/g, "-") || "tear-sheet";
   triggerDownload(
     new Blob([out], { type: "application/octet-stream" }),
     `${safe}.xlsx`

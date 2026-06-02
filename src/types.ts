@@ -5,6 +5,7 @@ export interface Item {
   id: string;
   name: string;        // Product name, e.g. "Lawson Sofa"
   vendor: string;      // Manufacturer / supplier
+  collection: string;  // Vendor's product line / collection, e.g. "Aspen", "Cloud"
   category: string;    // e.g. Seating, Lighting, Rug, Table, Art
   room: string;        // e.g. Living Room, Primary Bath
   sku: string;         // Item / model number
@@ -38,10 +39,34 @@ export interface AppData {
   activeProjectId: string | null;
 }
 
+/** Subscription state of a firm (tenant). Mirrors the DB check constraint. */
+export type SubscriptionStatus = "trial" | "active" | "suspended" | "canceled";
+
+/** A subscribing design company (tenant). */
+export interface Firm {
+  id: string;
+  name: string;
+  subscription_status: SubscriptionStatus;
+  renewal_date: string | null;
+  notes: string;
+  created_at: string;
+}
+
+/** An app user, linked to a firm. */
+export interface Profile {
+  id: string;
+  firm_id: string | null;
+  full_name: string;
+  email: string;
+  role: "member" | "platform_admin";
+  created_at: string;
+}
+
 /** The fields a user can supply via spreadsheet, in display order. */
 export const ITEM_FIELDS: { key: keyof Item; label: string }[] = [
   { key: "name", label: "Item" },
   { key: "vendor", label: "Vendor" },
+  { key: "collection", label: "Collection" },
   { key: "category", label: "Category" },
   { key: "room", label: "Room" },
   { key: "sku", label: "SKU" },
@@ -62,6 +87,7 @@ export function emptyItem(): Item {
     id: newId(),
     name: "",
     vendor: "",
+    collection: "",
     category: "",
     room: "",
     sku: "",

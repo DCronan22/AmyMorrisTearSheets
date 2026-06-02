@@ -1,5 +1,5 @@
 import type { Item } from "../types";
-import { formatPrice, lineTotal, PLACEHOLDER_IMG } from "../util";
+import { formatPrice, lineTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
 
 interface Props {
   items: Item[];
@@ -32,7 +32,7 @@ export default function Gallery({ items, onEdit, onPresentFrom }: Props) {
               title="Click to present"
             >
               <img
-                src={it.imageUrl || PLACEHOLDER_IMG}
+                src={safeImageUrl(it.imageUrl)}
                 alt={it.name}
                 loading="lazy"
                 onError={(e) => {
@@ -43,7 +43,11 @@ export default function Gallery({ items, onEdit, onPresentFrom }: Props) {
             </div>
             <div className="card-body">
               <h3 className="card-title">{it.name || "Untitled item"}</h3>
-              {it.vendor && <p className="card-vendor">{it.vendor}</p>}
+              {(it.vendor || it.collection) && (
+                <p className="card-vendor">
+                  {[it.vendor, it.collection].filter(Boolean).join(" · ")}
+                </p>
+              )}
               <dl className="card-specs">
                 {it.sku && (
                   <>

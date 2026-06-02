@@ -93,9 +93,9 @@ export default function ImportPanel({ onImport, onClose }: Props) {
               />
             </div>
             <p className="muted small">
-              Columns are matched automatically (Item, Vendor, Category, Room,
-              SKU, Price, Qty, Dimensions, Material, Color, Lead Time, Notes,
-              Image URL, Product URL).{" "}
+              Columns are matched automatically (Item, Vendor, Collection,
+              Category, Room, SKU, Price, Qty, Dimensions, Material, Color, Lead
+              Time, Notes, Image URL, Product URL).{" "}
               <button className="link-btn" onClick={downloadTemplate}>
                 Download a blank template
               </button>

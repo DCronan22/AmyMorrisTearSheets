@@ -1,8 +1,9 @@
 import type { Project } from "../types";
-import { formatPrice, lineTotal, projectTotal, PLACEHOLDER_IMG } from "../util";
+import { formatPrice, lineTotal, projectTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
 
 interface Props {
   project: Project;
+  firmName: string;
 }
 
 /**
@@ -10,7 +11,7 @@ interface Props {
  * during printing, so the browser's "Save as PDF" produces clean tear sheets —
  * one item per printed card, grouped by room.
  */
-export default function PrintView({ project }: Props) {
+export default function PrintView({ project, firmName }: Props) {
   const items = project.items;
   const rooms = groupByRoom(items);
   const total = projectTotal(items);
@@ -21,7 +22,7 @@ export default function PrintView({ project }: Props) {
         {project.logoUrl && (
           <img className="print-logo" src={project.logoUrl} alt="" />
         )}
-        <h1 className="print-firm">Amy Morris Interiors</h1>
+        <h1 className="print-firm">{firmName}</h1>
         <h2 className="print-project">{project.name}</h2>
         <p className="print-sub">
           {[project.client, project.location].filter(Boolean).join(" · ")}
@@ -45,7 +46,7 @@ export default function PrintView({ project }: Props) {
             <article className="print-item" key={it.id}>
               <div className="print-item-img">
                 <img
-                  src={it.imageUrl || PLACEHOLDER_IMG}
+                  src={safeImageUrl(it.imageUrl)}
                   alt={it.name}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
@@ -54,10 +55,17 @@ export default function PrintView({ project }: Props) {
               </div>
               <div className="print-item-info">
                 <h4>{it.name || "Untitled item"}</h4>
-                {it.vendor && <p className="print-vendor">{it.vendor}</p>}
+                {(it.vendor || it.collection) && (
+                  <p className="print-vendor">
+                    {[it.vendor, it.collection].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <table className="print-specs">
                   <tbody>
                     {it.sku && <Spec label="SKU / Model" value={it.sku} />}
+                    {it.collection && (
+                      <Spec label="Collection" value={it.collection} />
+                    )}
                     {it.category && <Spec label="Category" value={it.category} />}
                     {it.dimensions && (
                       <Spec label="Dimensions" value={it.dimensions} />

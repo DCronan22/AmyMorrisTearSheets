@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Item, Project } from "../types";
-import { formatPrice, lineTotal, PLACEHOLDER_IMG } from "../util";
+import { formatPrice, lineTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
 
 interface Props {
   project: Project;
@@ -81,7 +81,7 @@ export default function Slideshow({ project, startIndex, onClose }: Props) {
         <div className="slide">
           <div className="slide-img">
             <img
-              src={it.imageUrl || PLACEHOLDER_IMG}
+              src={safeImageUrl(it.imageUrl)}
               alt={it.name}
               onError={(e) => {
                 (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
@@ -91,7 +91,11 @@ export default function Slideshow({ project, startIndex, onClose }: Props) {
           <div className="slide-info">
             {it.category && <p className="slide-cat">{it.category}</p>}
             <h2 className="slide-title">{it.name || "Untitled item"}</h2>
-            {it.vendor && <p className="slide-vendor">{it.vendor}</p>}
+            {(it.vendor || it.collection) && (
+              <p className="slide-vendor">
+                {[it.vendor, it.collection].filter(Boolean).join(" · ")}
+              </p>
+            )}
 
             <dl className="slide-specs">
               {it.sku && (

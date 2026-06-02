@@ -32,6 +32,23 @@ export function distinct(items: Item[], key: keyof Item): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Only allow http(s) and uploaded image data URLs to reach an <img src>. Blocks
+ * javascript:/data:text/html style stored-XSS payloads (vendor URLs and
+ * spreadsheet imports are untrusted). Anything else falls back to the placeholder.
+ */
+export function safeImageUrl(u: string | undefined | null): string {
+  if (!u) return PLACEHOLDER_IMG;
+  const v = u.trim();
+  if (v.startsWith("data:image/")) return v;
+  try {
+    const p = new URL(v);
+    return p.protocol === "http:" || p.protocol === "https:" ? p.href : PLACEHOLDER_IMG;
+  } catch {
+    return PLACEHOLDER_IMG;
+  }
+}
+
 /** A neutral placeholder image (data URL) for items without a photo. */
 export const PLACEHOLDER_IMG =
   "data:image/svg+xml;utf8," +
