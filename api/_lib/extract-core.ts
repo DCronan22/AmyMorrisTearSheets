@@ -193,9 +193,17 @@ function collectProducts(node: unknown, out: Record<string, unknown>[]): void {
 /** Render a schema.org QuantitativeValue (or plain string) to "value unit". */
 function quantityToStr(v: unknown): string | undefined {
   if (v === null || v === undefined) return undefined;
+  // Plain numeric dimension, e.g. width: 32.
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : undefined;
   if (typeof v === "object" && !Array.isArray(v)) {
     const ov = v as Record<string, unknown>;
-    const val = firstString(ov.value, ov["@value"]);
+    // schema.org commonly publishes `value` as a number, which firstString
+    // ignores — coerce numbers so numeric dimensions aren't dropped.
+    const rawVal = ov.value ?? ov["@value"];
+    const val =
+      typeof rawVal === "number" && Number.isFinite(rawVal)
+        ? String(rawVal)
+        : firstString(rawVal);
     if (!val) return undefined;
     const unit = firstString(ov.unitText, ov.unitCode);
     return unit ? `${val} ${unit}` : val;
