@@ -38,6 +38,41 @@ function apiExtractDevPlugin(): Plugin {
   }
 }
 
+// Local dev middleware for POST /api/detect-style, mirroring the Vercel
+// serverless function (api/detect-style.ts). Dormant until ANTHROPIC_API_KEY is
+// set, exactly like production.
+function apiDetectStyleDevPlugin(): Plugin {
+  return {
+    name: 'api-detect-style-dev',
+    configureServer(server) {
+      server.middlewares.use(
+        '/api/detect-style',
+        async (req: IncomingMessage, res: ServerResponse) => {
+          const json = (status: number, body: unknown) => {
+            res.statusCode = status
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify(body))
+          }
+          if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' })
+          try {
+            const { getUserId } = await server.ssrLoadModule('/api/_lib/auth.ts')
+            const { runStyleDetect } = await server.ssrLoadModule('/api/_lib/style-run.ts')
+            const userId = await getUserId(req.headers.authorization)
+            if (!userId) return json(401, { error: 'Not authenticated.' })
+            const chunks: Buffer[] = []
+            for await (const c of req) chunks.push(c as Buffer)
+            const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+            const { status, payload } = await runStyleDetect(body)
+            return json(status, payload)
+          } catch {
+            return json(500, { error: 'Style detection failed.' })
+          }
+        }
+      )
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Expose .env values to the server-side dev middleware (auth + Anthropic key).
@@ -53,6 +88,6 @@ export default defineConfig(({ mode }) => {
   return {
     // GitHub Pages served the app under a sub-path; Vercel serves at root.
     base: process.env.GITHUB_PAGES ? '/AmyMorrisTearSheets/' : '/',
-    plugins: [react(), apiExtractDevPlugin()],
+    plugins: [react(), apiExtractDevPlugin(), apiDetectStyleDevPlugin()],
   }
 })

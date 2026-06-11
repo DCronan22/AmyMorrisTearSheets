@@ -84,6 +84,11 @@ async function assertPublicUrl(rawUrl: string): Promise<URL> {
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     throw new Error("Only http and https links are supported.");
   }
+  // Only the standard web ports — stops the fetcher being used to probe
+  // other services (SSH, databases, …) on public hosts.
+  if (u.port && u.port !== "80" && u.port !== "443") {
+    throw new Error("That address is not allowed.");
+  }
   const host = u.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
   if (/^(localhost|.*\.local|.*\.internal)$/i.test(host)) {
     throw new Error("That address is not allowed.");

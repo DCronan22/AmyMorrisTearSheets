@@ -1,4 +1,5 @@
-import type { AppData } from "./types";
+import type { AppData, Item, Project } from "./types";
+import { emptyItem, emptyProject } from "./types";
 
 // File-download helpers. Persistence now lives in Supabase (see src/data/), so
 // these only handle the manual "Export backup (.json)" feature and the
@@ -10,6 +11,70 @@ export function exportProjectFile(data: AppData): void {
     type: "application/json",
   });
   triggerDownload(blob, "tear-sheets-backup.json");
+}
+
+// A backup file is untrusted input (it may be hand-edited or from another
+// machine), so every field is type-checked and coerced before it gets near
+// the database. Unknown fields are dropped; wrong-typed fields fall back to
+// the blank-item defaults.
+function sanitizeItem(raw: unknown): Item {
+  const item = emptyItem();
+  if (!raw || typeof raw !== "object") return item;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  item.name = str(r.name);
+  item.vendor = str(r.vendor);
+  item.collection = str(r.collection);
+  item.category = str(r.category);
+  item.room = str(r.room);
+  item.sku = str(r.sku);
+  item.price =
+    typeof r.price === "number" && Number.isFinite(r.price) ? r.price : null;
+  item.quantity =
+    typeof r.quantity === "number" && Number.isFinite(r.quantity) && r.quantity >= 1
+      ? Math.floor(r.quantity)
+      : 1;
+  item.dimensions = str(r.dimensions);
+  item.material = str(r.material);
+  item.color = str(r.color);
+  item.leadTime = str(r.leadTime);
+  item.notes = str(r.notes);
+  item.imageUrl = str(r.imageUrl);
+  item.productUrl = str(r.productUrl);
+  return item;
+}
+
+function sanitizeProject(raw: unknown): Project {
+  const p = emptyProject();
+  if (!raw || typeof raw !== "object") return p;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  p.name = str(r.name).trim() || "Restored project";
+  p.client = str(r.client);
+  p.location = str(r.location);
+  // Only accept an ISO yyyy-mm-dd date; anything else becomes "no date".
+  p.date = /^\d{4}-\d{2}-\d{2}$/.test(str(r.date)) ? str(r.date) : "";
+  p.logoUrl = str(r.logoUrl);
+  p.notes = str(r.notes);
+  p.items = Array.isArray(r.items) ? r.items.map(sanitizeItem) : [];
+  return p;
+}
+
+/** Parse + validate an exported backup (.json) file into clean projects. */
+export async function parseBackupFile(file: File): Promise<Project[]> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch {
+    throw new Error("That file isn't a readable backup (.json) file.");
+  }
+  const projects = (raw as { projects?: unknown })?.projects;
+  if (!Array.isArray(projects)) {
+    throw new Error(
+      "That file doesn't look like a Tear Sheets backup — choose a file made with “Export backup (.json)”."
+    );
+  }
+  return projects.map(sanitizeProject);
 }
 
 export function triggerDownload(blob: Blob, filename: string): void {

@@ -9,10 +9,18 @@ interface Props {
   onSave: (item: Item) => void;
   onClose: () => void;
   onDelete?: (id: string) => void;
+  /** Save the current draft as a NEW copy (existing items only). */
+  onDuplicate?: (item: Item) => void;
 }
 
 /** Modal form for adding or editing a single item. */
-export default function ItemEditor({ item, onSave, onClose, onDelete }: Props) {
+export default function ItemEditor({
+  item,
+  onSave,
+  onClose,
+  onDelete,
+  onDuplicate,
+}: Props) {
   const [draft, setDraft] = useState<Item>(item);
   const [linkUrl, setLinkUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -277,6 +285,15 @@ export default function ItemEditor({ item, onSave, onClose, onDelete }: Props) {
               onClick={() => onDelete(draft.id)}
             >
               Delete
+            </button>
+          )}
+          {onDuplicate && (
+            <button
+              className="btn ghost"
+              onClick={() => onDuplicate(draft)}
+              title="Add a copy of this item to the project"
+            >
+              Duplicate
             </button>
           )}
           <span className="spacer" />

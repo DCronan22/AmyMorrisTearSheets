@@ -49,6 +49,28 @@ export function safeImageUrl(u: string | undefined | null): string {
   }
 }
 
+/**
+ * Like safeImageUrl, but for optional images (logos): returns "" instead of a
+ * placeholder when the value is missing or unsafe, so the <img> is simply not
+ * rendered.
+ */
+export function safeLogoUrl(u: string | undefined | null): string {
+  if (!u) return "";
+  const v = safeImageUrl(u);
+  return v === PLACEHOLDER_IMG ? "" : v;
+}
+
+/** Validate an outbound link: http(s) only, else null (don't render it). */
+export function safeLinkUrl(u: string | undefined | null): string | null {
+  if (!u) return null;
+  try {
+    const p = new URL(u.trim());
+    return p.protocol === "http:" || p.protocol === "https:" ? p.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A neutral placeholder image (data URL) for items without a photo. */
 export const PLACEHOLDER_IMG =
   "data:image/svg+xml;utf8," +

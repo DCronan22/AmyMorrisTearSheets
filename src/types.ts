@@ -42,6 +42,132 @@ export interface AppData {
 /** Subscription state of a firm (tenant). Mirrors the DB check constraint. */
 export type SubscriptionStatus = "trial" | "active" | "suspended" | "canceled";
 
+/** Tear-sheet export layouts a firm can choose between. */
+export type TearSheetLayout = "list" | "grid" | "spotlight";
+
+/** Curated heading/body font pairings (uses only already-loaded web fonts). */
+export type FontPairing =
+  | "classic-serif"
+  | "modern-sans"
+  | "editorial"
+  | "minimal";
+
+/**
+ * A firm's reusable export branding. Drives the printable/PDF tear sheet (and a
+ * touch of the on-screen accent). `null` on a firm means "not configured yet",
+ * which triggers the optional first-run setup prompt.
+ */
+export interface FirmStyle {
+  logoUrl: string; // firm logo, data URL or URL (manual upload)
+  accentColor: string; // hex — headings, room titles, rules
+  textColor: string; // hex — body text
+  font: FontPairing;
+  layout: TearSheetLayout;
+  showPrice: boolean; // include prices on the sheet
+  showSku: boolean; // include SKU / model rows
+  showDimensions: boolean; // include dimensions rows
+  coverTitle: string; // overrides the cover heading (defaults to firm name)
+  footerText: string; // footer tagline (defaults to "{firm} Tear Sheets")
+}
+
+/** The subset of style a sample sheet can be analyzed into (AI auto-detect). */
+export type DetectedStyle = Partial<Omit<FirmStyle, "logoUrl">>;
+
+/** Font-pairing → CSS stacks + label, shared by the editor preview and exports. */
+export const FONT_STACKS: Record<
+  FontPairing,
+  { head: string; body: string; label: string }
+> = {
+  "classic-serif": {
+    head: '"Cormorant Garamond", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+    label: "Classic serif",
+  },
+  "modern-sans": {
+    head: '"Inter", system-ui, sans-serif',
+    body: '"Inter", system-ui, sans-serif',
+    label: "Modern sans",
+  },
+  editorial: {
+    head: 'Georgia, "Times New Roman", serif',
+    body: 'Georgia, "Times New Roman", serif',
+    label: "Editorial serif",
+  },
+  minimal: {
+    head: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    body: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    label: "Minimal",
+  },
+};
+
+/** Layout options + descriptions for the style editor. */
+export const TEAR_SHEET_LAYOUTS: {
+  value: TearSheetLayout;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "list", label: "List", hint: "Image left, specs right — dense & classic" },
+  { value: "grid", label: "Grid", hint: "Two cards per row — visual overview" },
+  { value: "spotlight", label: "Spotlight", hint: "One large item per page" },
+];
+
+/** A sensible default style, matching the app's original editorial look. */
+export function defaultFirmStyle(): FirmStyle {
+  return {
+    logoUrl: "",
+    accentColor: "#6d6047",
+    textColor: "#2b2722",
+    font: "classic-serif",
+    layout: "list",
+    showPrice: true,
+    showSku: true,
+    showDimensions: true,
+    coverTitle: "",
+    footerText: "",
+  };
+}
+
+/**
+ * Coerce a firm's stored `style` jsonb into a complete, well-typed FirmStyle.
+ * The column is written via an RPC any firm member can call, so its contents
+ * are untrusted: missing/wrong-typed fields fall back to the default style
+ * instead of crashing the workspace (e.g. FONT_STACKS[undefined]).
+ */
+export function normalizeFirmStyle(raw: unknown): FirmStyle {
+  const d = defaultFirmStyle();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return d;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown, fb: string) => (typeof v === "string" ? v : fb);
+  const bool = (v: unknown, fb: boolean) => (typeof v === "boolean" ? v : fb);
+  const color = (v: unknown, fb: string) =>
+    typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v.trim())
+      ? v.trim()
+      : fb;
+  const font: FontPairing =
+    r.font === "classic-serif" ||
+    r.font === "modern-sans" ||
+    r.font === "editorial" ||
+    r.font === "minimal"
+      ? r.font
+      : d.font;
+  const layout: TearSheetLayout =
+    r.layout === "list" || r.layout === "grid" || r.layout === "spotlight"
+      ? r.layout
+      : d.layout;
+  return {
+    logoUrl: str(r.logoUrl, d.logoUrl),
+    accentColor: color(r.accentColor, d.accentColor),
+    textColor: color(r.textColor, d.textColor),
+    font,
+    layout,
+    showPrice: bool(r.showPrice, d.showPrice),
+    showSku: bool(r.showSku, d.showSku),
+    showDimensions: bool(r.showDimensions, d.showDimensions),
+    coverTitle: str(r.coverTitle, d.coverTitle),
+    footerText: str(r.footerText, d.footerText),
+  };
+}
+
 /** A subscribing design company (tenant). */
 export interface Firm {
   id: string;
@@ -49,6 +175,7 @@ export interface Firm {
   subscription_status: SubscriptionStatus;
   renewal_date: string | null;
   notes: string;
+  style: FirmStyle | null;
   created_at: string;
 }
 

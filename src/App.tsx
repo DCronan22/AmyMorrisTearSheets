@@ -6,6 +6,7 @@ import Login from "./auth/Login";
 import {
   SetupNeeded,
   FullScreenLoader,
+  AuthLoadError,
   NoFirm,
   SubscriptionInactive,
 } from "./auth/Gates";
@@ -19,8 +20,16 @@ import Workspace from "./Workspace";
  * provides the right UX for each state.
  */
 export default function App() {
-  const { session, profile, firm, loading, isPlatformAdmin, signOut } =
-    useAuth();
+  const {
+    session,
+    profile,
+    firm,
+    loading,
+    loadError,
+    isPlatformAdmin,
+    refresh,
+    signOut,
+  } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
 
   if (!isSupabaseConfigured) return <SetupNeeded />;
@@ -28,6 +37,14 @@ export default function App() {
   if (!session) return <Login />;
 
   const email = session.user.email ?? "";
+
+  // The session exists but the profile/firm fetch failed (e.g. offline).
+  // Without this gate the user would wrongly see "account pending setup".
+  if (loadError) {
+    return (
+      <AuthLoadError message={loadError} onRetry={refresh} onSignOut={signOut} />
+    );
+  }
 
   // Platform admin: can always reach the admin panel. They only drop into the
   // tear-sheet workspace if they themselves belong to an active firm.

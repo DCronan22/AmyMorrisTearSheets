@@ -53,6 +53,35 @@ export async function autofill(input: {
 }
 
 /**
+ * Downscale a logo to a small PNG data URL, preserving transparency (unlike the
+ * JPEG path below). Logos are small, so this stays well within the row budget.
+ */
+export function compressLogoFile(file: File, maxDim = 480): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read that image."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That image couldn't be loaded."));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Image processing unavailable."));
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Downscale + compress an image file to a small JPEG data URL before storing.
  * Keeps the database row tiny (the cost auditor's #1 issue) and the upload fast.
  */

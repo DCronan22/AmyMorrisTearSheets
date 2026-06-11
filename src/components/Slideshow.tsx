@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Item, Project } from "../types";
-import { formatPrice, lineTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
+import {
+  formatPrice,
+  lineTotal,
+  PLACEHOLDER_IMG,
+  safeImageUrl,
+  safeLinkUrl,
+} from "../util";
 
 interface Props {
   project: Project;
@@ -137,6 +143,19 @@ export default function Slideshow({ project, startIndex, onClose }: Props) {
             </dl>
 
             {it.notes && <p className="slide-notes">{it.notes}</p>}
+
+            {safeLinkUrl(it.productUrl) && (
+              <p>
+                <a
+                  className="link-btn"
+                  href={safeLinkUrl(it.productUrl)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View product page ↗
+                </a>
+              </p>
+            )}
 
             {it.price !== null && (
               <p className="slide-price">

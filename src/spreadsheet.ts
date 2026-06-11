@@ -145,7 +145,12 @@ export function exportItemsToSpreadsheet(items: Item[], projectName: string): vo
   const data = items.map((it) =>
     fields.map((f) => {
       const v = it[f.key];
-      return v === null || v === undefined ? "" : v;
+      if (v === null || v === undefined) return "";
+      // Uploaded photos are stored as huge base64 data URLs that blow Excel's
+      // 32,767-character cell limit and corrupt the export — leave those blank.
+      if (f.key === "imageUrl" && typeof v === "string" && v.startsWith("data:"))
+        return "";
+      return typeof v === "string" ? v.slice(0, 32000) : v;
     })
   );
   const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);

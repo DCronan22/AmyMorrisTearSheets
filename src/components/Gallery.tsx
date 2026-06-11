@@ -1,5 +1,11 @@
 import type { Item } from "../types";
-import { formatPrice, lineTotal, PLACEHOLDER_IMG, safeImageUrl } from "../util";
+import {
+  formatPrice,
+  lineTotal,
+  PLACEHOLDER_IMG,
+  safeImageUrl,
+  safeLinkUrl,
+} from "../util";
 
 interface Props {
   items: Item[];
@@ -33,6 +39,7 @@ export default function Gallery({
       {items.map((it, i) => {
         const total = lineTotal(it);
         const isSelected = selected.has(it.id);
+        const productLink = safeLinkUrl(it.productUrl);
         return (
           <article
             className={`card${isSelected ? " card-selected" : ""}`}
@@ -116,9 +123,22 @@ export default function Gallery({
                     </>
                   )}
                 </div>
-                <button className="btn ghost small" onClick={() => onEdit(it)}>
-                  Edit
-                </button>
+                <span className="card-actions">
+                  {productLink && (
+                    <a
+                      className="btn ghost small"
+                      href={productLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open the vendor's product page"
+                    >
+                      Visit ↗
+                    </a>
+                  )}
+                  <button className="btn ghost small" onClick={() => onEdit(it)}>
+                    Edit
+                  </button>
+                </span>
               </div>
             </div>
           </article>

@@ -28,6 +28,11 @@ take about 15 minutes total.
 This creates the `firms`, `profiles`, and `projects` tables, the helper
 functions, the signup trigger, and all the Row-Level Security policies.
 
+Then run the later migrations the same way (New query → paste → Run):
+
+- [`supabase/migrations/0002_admin_delete_user.sql`](supabase/migrations/0002_admin_delete_user.sql) — admin delete-user RPC.
+- [`supabase/migrations/0003_firm_style.sql`](supabase/migrations/0003_firm_style.sql) — **required for per-firm tear sheet styling.** Adds the `firms.style` column and the `set_firm_style` RPC. Until this is run, the in-app "Tear sheet style" editor will fail to save.
+
 ## 3. Configure authentication
 
 1. Go to **Authentication → Providers → Email** and make sure it's enabled.
@@ -124,3 +129,15 @@ add a `_redirects` file with `/*  /index.html  200`).
 - **Items are stored as JSON** inside each `projects` row, which keeps the app
   simple and fast. Filtering (vendor / collection / category / room) happens in
   the browser.
+- **Per-firm tear sheet styling.** Each firm has a `style` (logo, colors, font,
+  layout, field toggles, cover/footer text) that drives its exports. Members set
+  it via an optional first-run prompt or the ⋯ → "Tear sheet style…" menu, and
+  it's saved through the `set_firm_style` RPC (members can edit only their own
+  firm's style, never billing/name). Requires migration `0003`.
+- **AI "match my existing tear sheet" is wired but dormant.** The style editor
+  can upload a sample sheet and have Claude vision auto-suggest the settings via
+  `POST /api/detect-style` (Haiku, forced tool use, server-side only). It stays
+  off and returns a friendly "not enabled yet" until you set `ANTHROPIC_API_KEY`
+  on the server (same key that powers the item auto-fill AI tier) — no code
+  changes needed to turn it on. Logos are stored inline as small PNGs for now;
+  Supabase Storage is the eventual home (see deferred upgrades).

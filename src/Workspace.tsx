@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import "./App.css";
 import type { AppData, Firm, Item, Project } from "./types";
-import { emptyItem, emptyProject } from "./types";
-import { exportProjectFile } from "./storage";
+import { emptyItem, emptyProject, defaultFirmStyle, newId } from "./types";
+import { useAuth } from "./auth/AuthProvider";
+import StyleEditor from "./branding/StyleEditor";
+import { exportProjectFile, parseBackupFile } from "./storage";
 import { exportItemsToSpreadsheet } from "./spreadsheet";
 import {
   createProject as dbCreateProject,
@@ -48,9 +51,30 @@ export default function Workspace({
   const [collectionFilter, setCollectionFilter] = useState("");
   const [search, setSearch] = useState("");
   const [editingHeader, setEditingHeader] = useState(false);
+  const [showStyle, setShowStyle] = useState(false);
+  // Optional first-run prompt: shown once per firm that has no style yet, and
+  // not again this session if skipped. Always editable later from the menu.
+  const [showStyleOnboard, setShowStyleOnboard] = useState(
+    () => !firm.style && !sessionStorage.getItem(`ts_style_prompt_${firm.id}`)
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const { applyFirm } = useAuth();
   // The set of items to render in the print layout (selected subset or all).
   const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
+  const restoreInput = useRef<HTMLInputElement>(null);
+  // Monotonic save counter so a slow, stale save response can never overwrite
+  // the state produced by a newer save (out-of-order network replies).
+  const saveSeq = useRef(0);
+
+  // Brand the browser tab for whichever firm is signed in; restore the generic
+  // product name when leaving the workspace (sign-out / admin panel).
+  useEffect(() => {
+    document.title = `${firm.name} · Tear Sheets`;
+    return () => {
+      document.title = "Tear Sheets";
+    };
+  }, [firm.name]);
 
   // Initial load of this firm's projects from Supabase.
   useEffect(() => {
@@ -150,9 +174,12 @@ export default function Workspace({
 
   async function persist(p: Project) {
     setSaveError(null);
+    const seq = ++saveSeq.current;
     try {
       const saved = await saveProject(p);
-      // Adopt the stored row (server-normalized date, updated_at) into state.
+      // Adopt the stored row (server-normalized date, updated_at) into state —
+      // but only if no newer save started while this one was in flight.
+      if (seq !== saveSeq.current) return;
       setProjects((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
     } catch (e) {
       setSaveError(
@@ -191,6 +218,17 @@ export default function Workspace({
     setEditing(null);
   }
 
+  // Save a copy of an existing item as a new item (fresh id, "(copy)" name).
+  function duplicateItem(item: Item) {
+    const copy: Item = {
+      ...item,
+      id: newId(),
+      name: item.name ? `${item.name} (copy)` : item.name,
+    };
+    applyProjectChange((p) => ({ ...p, items: [...p.items, copy] }));
+    setEditing(null);
+  }
+
   function handleImport(items: Item[], mode: "append" | "replace") {
     applyProjectChange((p) => ({
       ...p,
@@ -207,6 +245,56 @@ export default function Workspace({
       setActiveProjectId(stored.id);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Could not create project.");
+    }
+  }
+
+  // Copy the whole active project (header + items) as a new project.
+  async function duplicateProject() {
+    if (!project) return;
+    setSaveError(null);
+    try {
+      const stored = await dbCreateProject(firm.id, {
+        ...project,
+        name: `${project.name} (copy)`,
+      });
+      setProjects((ps) => [stored, ...ps]);
+      setActiveProjectId(stored.id);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Could not duplicate the project."
+      );
+    }
+  }
+
+  // Restore projects from an exported backup (.json) file. Restored projects
+  // are ADDED alongside current ones — nothing is overwritten or deleted.
+  async function restoreBackup(file: File) {
+    setSaveError(null);
+    try {
+      const restored = await parseBackupFile(file);
+      if (restored.length === 0) {
+        setSaveError("That backup file doesn't contain any projects.");
+        return;
+      }
+      const itemCount = restored.reduce((n, p) => n + p.items.length, 0);
+      if (
+        !confirm(
+          `Restore ${restored.length} project${restored.length === 1 ? "" : "s"} ` +
+            `(${itemCount} item${itemCount === 1 ? "" : "s"}) from this backup? ` +
+            "They'll be added alongside your current projects — nothing is overwritten."
+        )
+      )
+        return;
+      const stored: Project[] = [];
+      for (const p of restored) {
+        stored.push(await dbCreateProject(firm.id, p));
+      }
+      setProjects((ps) => [...stored, ...ps]);
+      setActiveProjectId(stored[0].id);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Couldn't restore that backup file."
+      );
     }
   }
 
@@ -245,6 +333,47 @@ export default function Workspace({
       .join("")
       .toUpperCase() || "TS";
 
+  // The firm's style (or the default look) drives exports and a touch of the
+  // on-screen accent so the workspace itself feels tailored to the company.
+  const style = firm.style ?? defaultFirmStyle();
+  const appVars = {
+    "--accent": style.accentColor,
+    "--accent-dark": style.accentColor,
+  } as CSSProperties;
+
+  function onStyleSaved(updated: Firm) {
+    applyFirm(updated);
+    setShowStyle(false);
+    setShowStyleOnboard(false);
+  }
+  function skipStyleOnboard() {
+    sessionStorage.setItem(`ts_style_prompt_${firm.id}`, "1");
+    setShowStyleOnboard(false);
+  }
+
+  // Style editor / first-run prompt — rendered in both the empty and populated
+  // states so a brand-new firm (no projects yet) still gets the setup prompt.
+  const styleModals = (
+    <>
+      {showStyleOnboard && (
+        <StyleEditor
+          firm={firm}
+          onboarding
+          onClose={skipStyleOnboard}
+          onSkip={skipStyleOnboard}
+          onSaved={onStyleSaved}
+        />
+      )}
+      {showStyle && (
+        <StyleEditor
+          firm={firm}
+          onClose={() => setShowStyle(false)}
+          onSaved={onStyleSaved}
+        />
+      )}
+    </>
+  );
+
   if (!project) {
     return (
       <div className="empty-app">
@@ -255,15 +384,23 @@ export default function Workspace({
         </button>
         <p className="muted small" style={{ marginTop: 16 }}>
           Signed in as {userEmail} ·{" "}
+          <button className="link-btn" onClick={() => setShowStyle(true)}>
+            Tear sheet style
+          </button>{" "}
+          ·{" "}
           {isPlatformAdmin && (
-            <button className="link-btn" onClick={onOpenAdmin}>
-              Admin
-            </button>
-          )}{" "}
+            <>
+              <button className="link-btn" onClick={onOpenAdmin}>
+                Admin
+              </button>{" "}
+              ·{" "}
+            </>
+          )}
           <button className="link-btn" onClick={onSignOut}>
             Sign out
           </button>
         </p>
+        {styleModals}
       </div>
     );
   }
@@ -281,7 +418,7 @@ export default function Workspace({
 
   return (
     <>
-      <div className="app no-print">
+      <div className="app no-print" style={appVars}>
         <header className="topbar">
           <div className="brand">
             <span className="brand-mark">{initials}</span>
@@ -357,6 +494,13 @@ export default function Workspace({
                 <button onClick={() => exportProjectFile(backupData)}>
                   Export backup (.json)
                 </button>
+                <button onClick={() => restoreInput.current?.click()}>
+                  Restore backup (.json)…
+                </button>
+                <button onClick={duplicateProject}>Duplicate this project</button>
+                <button onClick={() => setShowStyle(true)}>
+                  Tear sheet style…
+                </button>
                 <button onClick={() => removeProject(project.id)}>
                   Delete this project
                 </button>
@@ -370,6 +514,19 @@ export default function Workspace({
         </header>
 
         {saveError && <p className="status-err save-banner">{saveError}</p>}
+
+        <input
+          ref={restoreInput}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) restoreBackup(f);
+            e.target.value = "";
+          }}
+        />
+
 
         <section className="project-head">
           {editingHeader ? (
@@ -517,12 +674,18 @@ export default function Workspace({
         </main>
 
         <footer className="appfoot muted small">
-          Saved to your account · {firm.name} Tear Sheets
+          Saved to your account ·{" "}
+          {style.footerText.trim() || `${firm.name} Tear Sheets`}
         </footer>
       </div>
 
       {/* Print layout lives outside .no-print and is shown only when printing */}
-      <PrintView project={project} firmName={firm.name} items={printItems} />
+      <PrintView
+        project={project}
+        firmName={firm.name}
+        style={style}
+        items={printItems}
+      />
 
       {editing && (
         <ItemEditor
@@ -531,6 +694,11 @@ export default function Workspace({
           onClose={() => setEditing(null)}
           onDelete={
             project.items.some((i) => i.id === editing.id) ? deleteItem : undefined
+          }
+          onDuplicate={
+            project.items.some((i) => i.id === editing.id)
+              ? duplicateItem
+              : undefined
           }
         />
       )}
@@ -544,6 +712,7 @@ export default function Workspace({
           onClose={() => setShowIndex(null)}
         />
       )}
+      {styleModals}
     </>
   );
 }

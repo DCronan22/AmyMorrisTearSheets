@@ -30,6 +30,34 @@ export function FullScreenLoader() {
   );
 }
 
+/** Shown when the profile/firm couldn't be loaded (network problem etc.). */
+export function AuthLoadError({
+  message,
+  onRetry,
+  onSignOut,
+}: {
+  message: string;
+  onRetry: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <h1 className="auth-title">Connection problem</h1>
+        <p className="muted">{message}</p>
+        <p>
+          <button className="btn primary" onClick={onRetry}>
+            Try again
+          </button>{" "}
+          <button className="btn ghost" onClick={onSignOut}>
+            Sign out
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** A signed-in user who isn't attached to any firm yet. */
 export function NoFirm({
   email,
