@@ -88,8 +88,13 @@ function blocksToStyle(message: Anthropic.Message): DetectedStyle {
       const hex = (v: unknown) =>
         typeof v === "string" && HEX_RE.test(v.trim()) ? v.trim().toLowerCase() : undefined;
       const bool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-      const str = (v: unknown) =>
-        typeof v === "string" && v.trim() ? v.trim() : undefined;
+      // Cut any leaked tool-call / tag markup out of free-text values; footer
+      // text never legitimately contains a "<tag" fragment. (See ai-extract.ts.)
+      const str = (v: unknown) => {
+        if (typeof v !== "string") return undefined;
+        const s = v.split(/<\s*\/?\s*[A-Za-z]/)[0].trim();
+        return s ? s : undefined;
+      };
 
       out.accentColor = hex(raw.accentColor);
       out.textColor = hex(raw.textColor);

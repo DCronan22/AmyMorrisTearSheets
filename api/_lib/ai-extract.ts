@@ -74,12 +74,22 @@ export function aiExtractAvailable(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
+// A model can occasionally leak its own tool-call delimiters (e.g.
+// "<parameter name=...>", "</antml...parameter>") as literal text inside a
+// string value. Strict tool use guarantees JSON shape, not clean string
+// contents. Legitimate product specs never contain tag markup, so cut the
+// value at the first tag-like fragment ("<" + optional "/" + a letter) and trim.
+function cleanText(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.split(/<\s*\/?\s*[A-Za-z]/)[0].trim();
+  return s ? s : undefined;
+}
+
 function blocksToFields(message: Anthropic.Message): ExtractedFields {
   for (const block of message.content) {
     if (block.type === "tool_use" && block.name === "record_product") {
       const raw = block.input as Record<string, unknown>;
-      const str = (v: unknown) =>
-        typeof v === "string" && v.trim() ? v.trim() : undefined;
+      const str = cleanText;
       const price =
         typeof raw.price === "number" && Number.isFinite(raw.price)
           ? raw.price
