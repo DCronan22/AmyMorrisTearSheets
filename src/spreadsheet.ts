@@ -22,6 +22,8 @@ const HEADER_ALIASES: Record<keyof Item, string[]> = {
   notes: ["notes", "note", "comments", "remarks", "spec notes"],
   imageUrl: ["image", "image url", "photo", "image link", "picture", "img"],
   productUrl: ["product url", "url", "link", "product link", "website", "web"],
+  // Not imported from spreadsheets; set via the item editor (defaults to true).
+  upholstered: [],
 };
 
 function normalize(s: string): string {

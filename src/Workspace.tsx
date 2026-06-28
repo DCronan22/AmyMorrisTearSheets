@@ -16,7 +16,7 @@ import {
 import { distinct, projectTotal, formatPrice } from "./util";
 import Gallery from "./components/Gallery";
 import Slideshow from "./components/Slideshow";
-import PrintView from "./components/PrintView";
+import TearSheetPrint from "./components/TearSheetPrint";
 import ItemEditor from "./components/ItemEditor";
 import ImportPanel from "./components/ImportPanel";
 
@@ -680,12 +680,7 @@ export default function Workspace({
       </div>
 
       {/* Print layout lives outside .no-print and is shown only when printing */}
-      <PrintView
-        project={project}
-        firmName={firm.name}
-        style={style}
-        items={printItems}
-      />
+      <TearSheetPrint project={project} items={printItems} />
 
       {editing && (
         <ItemEditor

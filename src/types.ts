@@ -18,6 +18,13 @@ export interface Item {
   notes: string;
   imageUrl: string;    // URL or data URL
   productUrl: string;  // Link to vendor product page
+  /**
+   * Upholstered piece? Drives the tear-sheet price line: upholstered items read
+   * "+ Fabric + Freight", everything else just "+ Freight". Optional for
+   * backward-compat with items saved before this field existed (treated as
+   * upholstered unless explicitly false).
+   */
+  upholstered?: boolean;
 }
 
 /** A project groups items for one client / installation. */
@@ -227,6 +234,7 @@ export function emptyItem(): Item {
     notes: "",
     imageUrl: "",
     productUrl: "",
+    upholstered: true,
   };
 }
 

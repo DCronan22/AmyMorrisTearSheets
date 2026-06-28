@@ -210,6 +210,18 @@ export default function ItemEditor({
             <input value={draft.leadTime} onChange={(e) => set("leadTime", e.target.value)} />
           </label>
 
+          <label className="full checkbox-row">
+            <input
+              type="checkbox"
+              checked={draft.upholstered !== false}
+              onChange={(e) => set("upholstered", e.target.checked)}
+            />
+            <span>
+              Upholstered piece — tear-sheet price reads “+ Fabric + Freight”
+              (unchecked: just “+ Freight”)
+            </span>
+          </label>
+
           <label>
             <span>Material / finish</span>
             <input value={draft.material} onChange={(e) => set("material", e.target.value)} />

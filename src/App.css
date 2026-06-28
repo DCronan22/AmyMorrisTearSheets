@@ -470,6 +470,20 @@ a.btn {
 .form-grid label.full {
   grid-column: 1 / -1;
 }
+.form-grid label.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.form-grid label.checkbox-row input {
+  width: auto;
+  flex: 0 0 auto;
+}
+.form-grid label.checkbox-row span {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+}
 .form-grid span {
   font-size: 11.5px;
   letter-spacing: 0.08em;
@@ -715,8 +729,9 @@ a.btn {
    Print / PDF layout
    ============================================================ */
 
-/* Hide print layout on screen; show only when printing. */
-.print-root {
+/* Hide print layouts on screen; show only when printing. */
+.print-root,
+.ts-print-root {
   display: none;
 }
 
@@ -733,9 +748,74 @@ a.btn {
     font-family: var(--sans);
   }
 
+  /* Amy Morris tear sheets are a tall 9:16 portrait card, one per page. */
   @page {
-    size: letter;
-    margin: 0.6in;
+    size: 7.5in 13.333in;
+    margin: 0;
+  }
+
+  /* ============================================================
+     Amy Morris Interiors tear sheet — exact PowerPoint template
+     ============================================================ */
+  .ts-print-root {
+    display: block;
+    color: #907c67;
+  }
+  .ts-page {
+    width: 7.5in;
+    height: 13.333in;
+    box-sizing: border-box;
+    padding: 0.5in 0.36in 0.85in;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    background: #fff;
+    color: #907c67;
+    font-family: Calibri, "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+  }
+  .ts-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .ts-logo {
+    width: 4.6in;
+    height: auto;
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+  .ts-room {
+    margin: 0.55in 0 0;
+    font-size: 18pt;
+    color: #907c67;
+    flex: 0 0 auto;
+  }
+  .ts-photo-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 0.45in 0;
+    min-height: 0;
+  }
+  .ts-photo {
+    max-width: 5.9in;
+    max-height: 5.9in;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+  .ts-details {
+    flex: 0 0 auto;
+    font-size: 18pt;
+    line-height: 1.5;
+  }
+  .ts-details p {
+    margin: 0;
   }
 
   .print-cover {

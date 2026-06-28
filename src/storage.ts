@@ -41,6 +41,7 @@ function sanitizeItem(raw: unknown): Item {
   item.notes = str(r.notes);
   item.imageUrl = str(r.imageUrl);
   item.productUrl = str(r.productUrl);
+  item.upholstered = typeof r.upholstered === "boolean" ? r.upholstered : true;
   return item;
 }
 
