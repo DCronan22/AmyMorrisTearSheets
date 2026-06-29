@@ -726,6 +726,117 @@ a.btn {
 }
 
 /* ============================================================
+   Master library + Clients/Library toggle + room grouping
+   ============================================================ */
+
+/* Segmented Clients / Library switch in the toolbar. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.view-toggle button {
+  border: none;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.view-toggle button:hover {
+  color: var(--ink);
+}
+.view-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Library view header. */
+.library-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 0 6px;
+}
+.library-head h1 {
+  font-size: 26px;
+}
+.library-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Room-grouped client view. */
+.room-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.room-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  color: var(--accent);
+  border-bottom: 1.5px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 14px;
+}
+.room-group-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+
+/* Quick per-card room selector in the grouped view. */
+.room-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.room-select-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.room-select select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Non-clickable card image (library / picker — no present-on-click). */
+.card-img-static {
+  cursor: default;
+}
+
+/* Taller scrolling modal for the library picker. */
+.modal.tall {
+  max-width: 880px;
+}
+.modal-scroll {
+  max-height: 56vh;
+  overflow: auto;
+  margin: 4px -4px;
+  padding: 4px;
+}
+
+/* ============================================================
    Print / PDF layout
    ============================================================ */
 

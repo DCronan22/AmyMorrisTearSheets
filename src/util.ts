@@ -23,13 +23,43 @@ export function projectTotal(items: Item[]): number {
 }
 
 /** Distinct, sorted values of a string field across items. */
-export function distinct(items: Item[], key: keyof Item): string[] {
+export function distinct<T>(items: T[], key: keyof T): string[] {
   const set = new Set<string>();
   for (const it of items) {
     const v = String(it[key] ?? "").trim();
     if (v) set.add(v);
   }
   return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+/** The product fields a catalog search/filter operates on. */
+export interface Filterable {
+  name: string;
+  vendor: string;
+  collection: string;
+  category: string;
+  sku: string;
+  material: string;
+  color: string;
+}
+
+/** Filter a catalog (project items or library items) by search + dropdowns. */
+export function filterCatalog<T extends Filterable>(
+  items: T[],
+  f: { search: string; vendor: string; collection: string; category: string }
+): T[] {
+  const q = f.search.trim().toLowerCase();
+  return items.filter((it) => {
+    if (f.vendor && it.vendor !== f.vendor) return false;
+    if (f.collection && it.collection !== f.collection) return false;
+    if (f.category && it.category !== f.category) return false;
+    if (q) {
+      const hay =
+        `${it.name} ${it.vendor} ${it.collection} ${it.sku} ${it.material} ${it.color}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
 }
 
 /**

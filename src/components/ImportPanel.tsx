@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Item } from "../types";
 import { parseSpreadsheet, downloadTemplate } from "../spreadsheet";
+import { parsePptx } from "../pptx";
 
 interface Props {
   onImport: (items: Item[], mode: "append" | "replace") => void;
@@ -18,12 +19,21 @@ export default function ImportPanel({ onImport, onClose }: Props) {
 
   async function handleFile(file: File) {
     setError(null);
-    setStatus(`Reading “${file.name}”…`);
+    const isPptx = /\.pptx$/i.test(file.name);
+    setStatus(
+      isPptx
+        ? `Reading slides from “${file.name}”…`
+        : `Reading “${file.name}”…`
+    );
     try {
-      const result = await parseSpreadsheet(file);
+      const result = isPptx
+        ? await parsePptx(file)
+        : await parseSpreadsheet(file);
       if (result.items.length === 0) {
         setError(
-          "No items found. Make sure the first row has column headers like Item, Vendor, Price."
+          isPptx
+            ? "No tear sheets found in that PowerPoint. Each slide should have the product name, dimensions, price, and lead time."
+            : "No items found. Make sure the first row has column headers like Item, Vendor, Price."
         );
         setStatus(null);
         return;
@@ -33,7 +43,13 @@ export default function ImportPanel({ onImport, onClose }: Props) {
       setStatus(
         `Found ${result.items.length} item${
           result.items.length === 1 ? "" : "s"
-        }${result.skippedRows ? ` (${result.skippedRows} blank rows skipped)` : ""}.`
+        }${
+          result.skippedRows
+            ? ` (${result.skippedRows} ${isPptx ? "blank slide" : "blank row"}${
+                result.skippedRows === 1 ? "" : "s"
+              } skipped)`
+            : ""
+        }.`
       );
     } catch (e) {
       setError(
@@ -78,13 +94,13 @@ export default function ImportPanel({ onImport, onClose }: Props) {
             >
               <div className="dropzone-icon">⬆</div>
               <p>
-                <strong>Drop an Excel or CSV file here</strong>
+                <strong>Drop an Excel, CSV, or PowerPoint file here</strong>
               </p>
               <p className="muted">or click to browse</p>
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.xls,.csv,.pptx"
                 hidden
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -93,12 +109,17 @@ export default function ImportPanel({ onImport, onClose }: Props) {
               />
             </div>
             <p className="muted small">
-              Columns are matched automatically (Item, Vendor, Collection,
-              Category, Room, SKU, Price, Qty, Dimensions, Material, Color, Lead
-              Time, Notes, Image URL, Product URL).{" "}
+              <strong>Spreadsheets:</strong> columns are matched automatically
+              (Item, Vendor, Collection, Category, Room, SKU, Price, Qty,
+              Dimensions, Material, Color, Lead Time, Notes, Image URL, Product
+              URL).{" "}
               <button className="link-btn" onClick={downloadTemplate}>
                 Download a blank template
               </button>
+              <br />
+              <strong>PowerPoint (.pptx):</strong> each slide becomes an item —
+              the product name, dimensions, price, lead time, room, and photo are
+              pulled from the slide automatically.
             </p>
           </>
         )}

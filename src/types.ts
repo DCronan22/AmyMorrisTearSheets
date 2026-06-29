@@ -238,6 +238,96 @@ export function emptyItem(): Item {
   };
 }
 
+/**
+ * A reusable entry in the firm's master tear-sheet library. It's a product
+ * spec only — it deliberately omits `room` and `quantity`, which belong to a
+ * client/project (the same chair can be "Living Room" for one client and "Den"
+ * for another, in different quantities).
+ */
+export interface LibraryItem {
+  id: string;
+  name: string;
+  vendor: string;
+  collection: string;
+  category: string;
+  sku: string;
+  price: number | null;
+  dimensions: string;
+  material: string;
+  color: string;
+  leadTime: string;
+  notes: string;
+  imageUrl: string;
+  productUrl: string;
+  upholstered?: boolean;
+}
+
+/** Promote a project item to a library entry (drops id/room/quantity). */
+export function itemToLibrary(it: Item): Omit<LibraryItem, "id"> {
+  return {
+    name: it.name,
+    vendor: it.vendor,
+    collection: it.collection,
+    category: it.category,
+    sku: it.sku,
+    price: it.price,
+    dimensions: it.dimensions,
+    material: it.material,
+    color: it.color,
+    leadTime: it.leadTime,
+    notes: it.notes,
+    imageUrl: it.imageUrl,
+    productUrl: it.productUrl,
+    upholstered: it.upholstered,
+  };
+}
+
+/**
+ * Drop a library entry into a project as a fresh, independent item: new id,
+ * empty room (lands under "Unassigned"), quantity 1. Edits to the project copy
+ * never touch the library master.
+ */
+export function libraryToItem(li: LibraryItem): Item {
+  return {
+    ...emptyItem(),
+    name: li.name,
+    vendor: li.vendor,
+    collection: li.collection,
+    category: li.category,
+    sku: li.sku,
+    price: li.price,
+    dimensions: li.dimensions,
+    material: li.material,
+    color: li.color,
+    leadTime: li.leadTime,
+    notes: li.notes,
+    imageUrl: li.imageUrl,
+    productUrl: li.productUrl,
+    upholstered: li.upholstered ?? true,
+  };
+}
+
+/** Build a blank library item with a fresh id. */
+export function emptyLibraryItem(): LibraryItem {
+  return {
+    id: newId(),
+    name: "",
+    vendor: "",
+    collection: "",
+    category: "",
+    sku: "",
+    price: null,
+    dimensions: "",
+    material: "",
+    color: "",
+    leadTime: "",
+    notes: "",
+    imageUrl: "",
+    productUrl: "",
+    upholstered: true,
+  };
+}
+
 /** Build a blank project with a fresh id. */
 export function emptyProject(name = "Untitled Project"): Project {
   return {

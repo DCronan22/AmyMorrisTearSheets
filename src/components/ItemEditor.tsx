@@ -11,6 +11,13 @@ interface Props {
   onDelete?: (id: string) => void;
   /** Save the current draft as a NEW copy (existing items only). */
   onDuplicate?: (item: Item) => void;
+  /** Promote the current draft into the firm's master library. */
+  onSaveToLibrary?: (item: Item) => void;
+  /**
+   * Editing a master library entry rather than a client item: hides the
+   * per-client Room and Quantity fields (those belong to a project).
+   */
+  libraryMode?: boolean;
 }
 
 /** Modal form for adding or editing a single item. */
@@ -20,6 +27,8 @@ export default function ItemEditor({
   onClose,
   onDelete,
   onDuplicate,
+  onSaveToLibrary,
+  libraryMode = false,
 }: Props) {
   const [draft, setDraft] = useState<Item>(item);
   const [linkUrl, setLinkUrl] = useState("");
@@ -102,7 +111,15 @@ export default function ItemEditor({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
-          <h2>{item.name ? "Edit item" : "New item"}</h2>
+          <h2>
+            {libraryMode
+              ? item.name
+                ? "Edit library item"
+                : "New library item"
+              : item.name
+                ? "Edit item"
+                : "New item"}
+          </h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -168,10 +185,12 @@ export default function ItemEditor({
               placeholder="Seating, Lighting, Rug…"
             />
           </label>
-          <label>
-            <span>Room</span>
-            <input value={draft.room} onChange={(e) => set("room", e.target.value)} />
-          </label>
+          {!libraryMode && (
+            <label>
+              <span>Room</span>
+              <input value={draft.room} onChange={(e) => set("room", e.target.value)} />
+            </label>
+          )}
           <label>
             <span>SKU / Model #</span>
             <input value={draft.sku} onChange={(e) => set("sku", e.target.value)} />
@@ -187,6 +206,7 @@ export default function ItemEditor({
               }
             />
           </label>
+          {!libraryMode && (
           <label>
             <span>Quantity</span>
             <input
@@ -196,6 +216,7 @@ export default function ItemEditor({
               onChange={(e) => set("quantity", Math.max(1, Number(e.target.value) || 1))}
             />
           </label>
+          )}
 
           <label>
             <span>Dimensions</span>
@@ -308,12 +329,21 @@ export default function ItemEditor({
               Duplicate
             </button>
           )}
+          {onSaveToLibrary && (
+            <button
+              className="btn ghost"
+              onClick={() => onSaveToLibrary(draft)}
+              title="Save this piece to your master library for reuse"
+            >
+              ★ Save to library
+            </button>
+          )}
           <span className="spacer" />
           <button className="btn ghost" onClick={onClose}>
             Cancel
           </button>
           <button className="btn primary" onClick={() => onSave(draft)}>
-            Save item
+            {libraryMode ? "Save to library" : "Save item"}
           </button>
         </div>
       </div>

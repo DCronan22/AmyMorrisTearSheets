@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import "./App.css";
-import type { AppData, Firm, Item, Project } from "./types";
-import { emptyItem, emptyProject, defaultFirmStyle, newId } from "./types";
+import type { AppData, Firm, Item, LibraryItem, Project } from "./types";
+import {
+  emptyItem,
+  emptyProject,
+  defaultFirmStyle,
+  itemToLibrary,
+  libraryToItem,
+  newId,
+} from "./types";
 import { useAuth } from "./auth/AuthProvider";
 import StyleEditor from "./branding/StyleEditor";
 import { exportProjectFile, parseBackupFile } from "./storage";
@@ -13,8 +20,17 @@ import {
   fetchProjects,
   saveProject,
 } from "./data/projects";
+import {
+  fetchLibrary,
+  createLibraryItem,
+  createLibraryItems,
+  saveLibraryItem,
+  deleteLibraryItem,
+} from "./data/library";
 import { distinct, projectTotal, formatPrice } from "./util";
-import Gallery from "./components/Gallery";
+import RoomGroupedGallery from "./components/RoomGroupedGallery";
+import LibraryView from "./components/LibraryView";
+import LibraryPicker from "./components/LibraryPicker";
 import Slideshow from "./components/Slideshow";
 import TearSheetPrint from "./components/TearSheetPrint";
 import ItemEditor from "./components/ItemEditor";
@@ -58,6 +74,19 @@ export default function Workspace({
     () => !firm.style && !sessionStorage.getItem(`ts_style_prompt_${firm.id}`)
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // --- Master library ---
+  const [viewMode, setViewMode] = useState<"clients" | "library">("clients");
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [librarySelected, setLibrarySelected] = useState<Set<string>>(new Set());
+  const [editingLibrary, setEditingLibrary] = useState<Item | null>(null);
+  const [picking, setPicking] = useState(false);
+  // Which destination an open ImportPanel feeds: the client or the library.
+  const [importTarget, setImportTarget] = useState<"client" | "library">("client");
+  const [flash, setFlash] = useState<string | null>(null);
 
   const { applyFirm } = useAuth();
   // The set of items to render in the print layout (selected subset or all).
@@ -235,6 +264,153 @@ export default function Workspace({
       items: mode === "replace" ? items : [...p.items, ...items],
     }));
     setImporting(false);
+  }
+
+  // --- Master library -------------------------------------------------------
+
+  // Briefly show a confirmation toast (e.g. "Saved to library").
+  function flashMsg(msg: string) {
+    setFlash(msg);
+    setTimeout(() => setFlash((m) => (m === msg ? null : m)), 2600);
+  }
+
+  // Load the firm's library the first time it's needed (library tab / picker).
+  async function ensureLibrary() {
+    if (libraryLoaded || libraryLoading) return;
+    setLibraryLoading(true);
+    setLibraryError(null);
+    try {
+      const items = await fetchLibrary(firm.id);
+      setLibrary(items);
+      setLibraryLoaded(true);
+    } catch (e) {
+      setLibraryError(
+        e instanceof Error ? e.message : "Could not load the library."
+      );
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
+  function openLibrary() {
+    setViewMode("library");
+    void ensureLibrary();
+  }
+
+  function toggleLibrarySelect(id: string) {
+    setLibrarySelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Save a library draft (the ItemEditor works on an Item; convert back). New
+  // entries are inserted (DB assigns the id); existing ones are updated.
+  async function saveLibraryDraft(draft: Item) {
+    setLibraryError(null);
+    const exists = library.some((l) => l.id === draft.id);
+    try {
+      if (exists) {
+        const saved = await saveLibraryItem({ id: draft.id, ...itemToLibrary(draft) });
+        setLibrary((ls) => ls.map((l) => (l.id === saved.id ? saved : l)));
+      } else {
+        const saved = await createLibraryItem(firm.id, itemToLibrary(draft));
+        setLibrary((ls) => [saved, ...ls]);
+      }
+      setEditingLibrary(null);
+    } catch (e) {
+      setLibraryError(
+        e instanceof Error ? e.message : "Could not save the library item."
+      );
+    }
+  }
+
+  async function removeLibraryItem(id: string) {
+    if (!confirm("Remove this piece from your library? Client projects that already use it are unaffected."))
+      return;
+    setLibraryError(null);
+    try {
+      await deleteLibraryItem(id);
+      setLibrary((ls) => ls.filter((l) => l.id !== id));
+      setLibrarySelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setEditingLibrary(null);
+    } catch (e) {
+      setLibraryError(
+        e instanceof Error ? e.message : "Could not delete the library item."
+      );
+    }
+  }
+
+  // Spreadsheet/PowerPoint import targeted at the library (additive).
+  async function importToLibrary(items: Item[]) {
+    setImporting(false);
+    setLibraryError(null);
+    try {
+      const saved = await createLibraryItems(firm.id, items.map(itemToLibrary));
+      setLibrary((ls) => [...saved, ...ls]);
+      flashMsg(`Added ${saved.length} to your library.`);
+    } catch (e) {
+      setLibraryError(
+        e instanceof Error ? e.message : "Could not import into the library."
+      );
+    }
+  }
+
+  // Route an ImportPanel result to whichever destination opened it.
+  function routeImport(items: Item[], mode: "append" | "replace") {
+    if (importTarget === "library") void importToLibrary(items);
+    else handleImport(items, mode);
+  }
+
+  // Promote a client item up to the master library (always a new entry).
+  async function saveItemToLibrary(item: Item) {
+    try {
+      const saved = await createLibraryItem(firm.id, itemToLibrary(item));
+      if (libraryLoaded) setLibrary((ls) => [saved, ...ls]);
+      flashMsg(`“${item.name || "Item"}” saved to library.`);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Could not save to library."
+      );
+    }
+  }
+
+  // Drop chosen library entries into the active project as independent copies
+  // (fresh ids, no room → they land under "Unassigned").
+  function addLibraryItemsToProject(libItems: LibraryItem[]) {
+    if (!libItems.length) return;
+    const copies = libItems.map(libraryToItem);
+    applyProjectChange((p) => ({ ...p, items: [...p.items, ...copies] }));
+    setPicking(false);
+    flashMsg(`Added ${copies.length} to ${project?.name ?? "the project"}.`);
+  }
+
+  // From the Library tab: copy the current selection into the open client.
+  function addLibrarySelectionToClient() {
+    const chosen = library.filter((l) => librarySelected.has(l.id));
+    if (!chosen.length || !project) return;
+    addLibraryItemsToProject(chosen);
+    setLibrarySelected(new Set());
+    setViewMode("clients");
+  }
+
+  function openPicker() {
+    setPicking(true);
+    void ensureLibrary();
+  }
+
+  // Quick room assignment from the grouped client view.
+  function setItemRoom(item: Item, room: string) {
+    applyProjectChange((p) => ({
+      ...p,
+      items: p.items.map((i) => (i.id === item.id ? { ...i, room } : i)),
+    }));
   }
 
   async function createProject() {
@@ -429,49 +605,81 @@ export default function Workspace({
           </div>
 
           <div className="toolbar">
-            <select
-              className="project-select"
-              value={project.id}
-              onChange={(e) => setActiveProjectId(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button className="btn ghost" onClick={createProject}>
-              + Project
-            </button>
-            <span className="divider" />
-            <button className="btn" onClick={() => setImporting(true)}>
-              ⬆ Import
-            </button>
-            <button className="btn" onClick={() => setEditing(emptyItem())}>
-              + Add item
-            </button>
-            <button
-              className="btn"
-              onClick={() => project.items.length && setShowIndex(0)}
-              disabled={!project.items.length}
-            >
-              ▶ Present
-            </button>
-            <button
-              className="btn"
-              onClick={() => print()}
-              disabled={!project.items.length}
-            >
-              🖶 Print / PDF
-            </button>
-            <button
-              className="btn"
-              onClick={() => print(selectedItems)}
-              disabled={selectedCount === 0}
-              title="Print only the selected items"
-            >
-              🖶 Print selected ({selectedCount})
-            </button>
+            <div className="view-toggle" role="tablist">
+              <button
+                className={viewMode === "clients" ? "active" : ""}
+                onClick={() => setViewMode("clients")}
+              >
+                Clients
+              </button>
+              <button
+                className={viewMode === "library" ? "active" : ""}
+                onClick={openLibrary}
+              >
+                Library
+              </button>
+            </div>
+            {viewMode === "clients" && (
+              <>
+                <span className="divider" />
+                <select
+                  className="project-select"
+                  value={project.id}
+                  onChange={(e) => setActiveProjectId(e.target.value)}
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn ghost" onClick={createProject}>
+                  + Project
+                </button>
+                <span className="divider" />
+                <button
+                  className="btn"
+                  onClick={openPicker}
+                  title="Add pieces from your master library"
+                >
+                  ＋ From library
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setImportTarget("client");
+                    setImporting(true);
+                  }}
+                >
+                  ⬆ Import
+                </button>
+                <button className="btn" onClick={() => setEditing(emptyItem())}>
+                  + Add item
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => project.items.length && setShowIndex(0)}
+                  disabled={!project.items.length}
+                >
+                  ▶ Present
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => print()}
+                  disabled={!project.items.length}
+                >
+                  🖶 Print / PDF
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => print(selectedItems)}
+                  disabled={selectedCount === 0}
+                  title="Print only the selected items"
+                >
+                  🖶 Print selected ({selectedCount})
+                </button>
+              </>
+            )}
             <span className="divider" />
             <div className="menu">
               <button className="btn ghost">⋯</button>
@@ -514,6 +722,7 @@ export default function Workspace({
         </header>
 
         {saveError && <p className="status-err save-banner">{saveError}</p>}
+        {flash && <p className="status-ok save-banner">{flash}</p>}
 
         <input
           ref={restoreInput}
@@ -527,7 +736,26 @@ export default function Workspace({
           }}
         />
 
-
+        {viewMode === "library" ? (
+          <LibraryView
+            library={library}
+            loading={libraryLoading}
+            error={libraryError}
+            selected={librarySelected}
+            onToggleSelect={toggleLibrarySelect}
+            onAdd={() => setEditingLibrary(emptyItem())}
+            onEdit={(li) => setEditingLibrary({ ...libraryToItem(li), id: li.id })}
+            onDelete={removeLibraryItem}
+            onImport={() => {
+              setImportTarget("library");
+              setImporting(true);
+            }}
+            onAddSelectedToClient={addLibrarySelectionToClient}
+            activeClientName={project.name}
+            selectedCount={librarySelected.size}
+          />
+        ) : (
+        <>
         <section className="project-head">
           {editingHeader ? (
             <ProjectHeaderForm
@@ -660,18 +888,21 @@ export default function Workspace({
         </section>
 
         <main className="content">
-          <Gallery
+          <RoomGroupedGallery
             items={filtered}
+            rooms={rooms}
             selected={selectedIds}
             onToggleSelect={toggleSelect}
             onEdit={setEditing}
-            onPresentFrom={(i) => {
-              const item = filtered[i];
+            onSetRoom={setItemRoom}
+            onPresent={(item) => {
               const realIndex = project.items.findIndex((x) => x.id === item.id);
               setShowIndex(realIndex >= 0 ? realIndex : 0);
             }}
           />
         </main>
+        </>
+        )}
 
         <footer className="appfoot muted small">
           Saved to your account ·{" "}
@@ -695,10 +926,34 @@ export default function Workspace({
               ? duplicateItem
               : undefined
           }
+          onSaveToLibrary={saveItemToLibrary}
+        />
+      )}
+      {editingLibrary && (
+        <ItemEditor
+          item={editingLibrary}
+          libraryMode
+          onSave={saveLibraryDraft}
+          onClose={() => setEditingLibrary(null)}
+          onDelete={
+            library.some((l) => l.id === editingLibrary.id)
+              ? removeLibraryItem
+              : undefined
+          }
+        />
+      )}
+      {picking && (
+        <LibraryPicker
+          library={library}
+          loading={libraryLoading}
+          error={libraryError}
+          clientName={project.name}
+          onConfirm={addLibraryItemsToProject}
+          onClose={() => setPicking(false)}
         />
       )}
       {importing && (
-        <ImportPanel onImport={handleImport} onClose={() => setImporting(false)} />
+        <ImportPanel onImport={routeImport} onClose={() => setImporting(false)} />
       )}
       {showIndex !== null && (
         <Slideshow
