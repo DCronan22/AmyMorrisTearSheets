@@ -227,6 +227,7 @@ export default function Workspace({
   }
 
   function saveItem(item: Item) {
+    const isNew = project ? !project.items.some((i) => i.id === item.id) : false;
     applyProjectChange((p) => {
       const exists = p.items.some((i) => i.id === item.id);
       return {
@@ -237,6 +238,8 @@ export default function Workspace({
       };
     });
     setEditing(null);
+    // Brand-new client items also seed the master library (deduped).
+    if (isNew) void mirrorToLibrary([item]);
   }
 
   function deleteItem(id: string) {
@@ -264,6 +267,8 @@ export default function Workspace({
       items: mode === "replace" ? items : [...p.items, ...items],
     }));
     setImporting(false);
+    // Imported client items also seed the master library (deduped).
+    void mirrorToLibrary(items);
   }
 
   // --- Master library -------------------------------------------------------
@@ -366,6 +371,45 @@ export default function Workspace({
   function routeImport(items: Item[], mode: "append" | "replace") {
     if (importTarget === "library") void importToLibrary(items);
     else handleImport(items, mode);
+  }
+
+  // De-dup key for "is this product already in the library?" checks.
+  function catalogKey(x: { name: string; vendor: string; sku: string }): string {
+    return `${x.name}|${x.vendor}|${x.sku}`.trim().toLowerCase();
+  }
+
+  /**
+   * Seed the master library with newly-created client items so the library
+   * builds itself as you work. Skips blank-name items and anything whose
+   * name+vendor+SKU already exists in the library — so the same piece used
+   * across multiple clients (and pieces pulled FROM the library) aren't
+   * duplicated. Non-fatal: a mirroring failure never blocks the client edit.
+   */
+  async function mirrorToLibrary(items: Item[]) {
+    const named = items.filter((it) => it.name.trim());
+    if (!named.length) return;
+    try {
+      // Dedup against the current library, loading it once if needed.
+      let lib = library;
+      if (!libraryLoaded) {
+        lib = await fetchLibrary(firm.id);
+        setLibrary(lib);
+        setLibraryLoaded(true);
+      }
+      const seen = new Set(lib.map(catalogKey));
+      const toAdd: ReturnType<typeof itemToLibrary>[] = [];
+      for (const it of named) {
+        const k = catalogKey(it);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        toAdd.push(itemToLibrary(it));
+      }
+      if (!toAdd.length) return;
+      const saved = await createLibraryItems(firm.id, toAdd);
+      setLibrary((ls) => [...saved, ...ls]);
+    } catch {
+      // Mirroring is best-effort; the client item is already saved.
+    }
   }
 
   // Promote a client item up to the master library (always a new entry).
