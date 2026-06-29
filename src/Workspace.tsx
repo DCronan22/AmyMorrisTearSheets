@@ -290,7 +290,7 @@ export default function Workspace({
       setLibraryLoaded(true);
     } catch (e) {
       setLibraryError(
-        e instanceof Error ? e.message : "Could not load the library."
+        e instanceof Error ? e.message : "Could not load the database."
       );
     } finally {
       setLibraryLoading(false);
@@ -327,13 +327,13 @@ export default function Workspace({
       setEditingLibrary(null);
     } catch (e) {
       setLibraryError(
-        e instanceof Error ? e.message : "Could not save the library item."
+        e instanceof Error ? e.message : "Could not save the database item."
       );
     }
   }
 
   async function removeLibraryItem(id: string) {
-    if (!confirm("Remove this piece from your library? Client projects that already use it are unaffected."))
+    if (!confirm("Remove this piece from your database? Client projects that already use it are unaffected."))
       return;
     setLibraryError(null);
     try {
@@ -347,7 +347,7 @@ export default function Workspace({
       setEditingLibrary(null);
     } catch (e) {
       setLibraryError(
-        e instanceof Error ? e.message : "Could not delete the library item."
+        e instanceof Error ? e.message : "Could not delete the database item."
       );
     }
   }
@@ -359,10 +359,10 @@ export default function Workspace({
     try {
       const saved = await createLibraryItems(firm.id, items.map(itemToLibrary));
       setLibrary((ls) => [...saved, ...ls]);
-      flashMsg(`Added ${saved.length} to your library.`);
+      flashMsg(`Added ${saved.length} to your database.`);
     } catch (e) {
       setLibraryError(
-        e instanceof Error ? e.message : "Could not import into the library."
+        e instanceof Error ? e.message : "Could not import into the database."
       );
     }
   }
@@ -417,10 +417,10 @@ export default function Workspace({
     try {
       const saved = await createLibraryItem(firm.id, itemToLibrary(item));
       if (libraryLoaded) setLibrary((ls) => [saved, ...ls]);
-      flashMsg(`“${item.name || "Item"}” saved to library.`);
+      flashMsg(`“${item.name || "Item"}” saved to database.`);
     } catch (e) {
       setSaveError(
-        e instanceof Error ? e.message : "Could not save to library."
+        e instanceof Error ? e.message : "Could not save to database."
       );
     }
   }
@@ -660,7 +660,7 @@ export default function Workspace({
                 className={viewMode === "library" ? "active" : ""}
                 onClick={openLibrary}
               >
-                Library
+                Database
               </button>
             </div>
             {viewMode === "clients" && (
@@ -684,9 +684,9 @@ export default function Workspace({
                 <button
                   className="btn"
                   onClick={openPicker}
-                  title="Add pieces from your master library"
+                  title="Add pieces from your master database"
                 >
-                  ＋ From library
+                  ＋ From database
                 </button>
                 <button
                   className="btn"

@@ -105,7 +105,7 @@ export async function saveLibraryItem(li: LibraryItem): Promise<LibraryItem> {
     .maybeSingle();
   if (error) throw error;
   if (!data) {
-    throw new Error("This library item is no longer available (it may have been deleted).");
+    throw new Error("This database item is no longer available (it may have been deleted).");
   }
   return rowToLibrary(data as LibraryRow);
 }

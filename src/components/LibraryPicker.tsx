@@ -58,7 +58,7 @@ export default function LibraryPicker({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal wide tall" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
-          <h2>Add from library → {clientName}</h2>
+          <h2>Add from database → {clientName}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -67,7 +67,7 @@ export default function LibraryPicker({
         <section className="filters">
           <input
             className="search"
-            placeholder="Search the library…"
+            placeholder="Search the database…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -104,19 +104,19 @@ export default function LibraryPicker({
 
         <div className="modal-scroll">
           {loading ? (
-            <div className="loader" aria-label="Loading library">
+            <div className="loader" aria-label="Loading database">
               <span className="spinner" />
             </div>
           ) : library.length === 0 ? (
             <div className="empty">
-              <p>Your library is empty.</p>
+              <p>Your database is empty.</p>
               <p className="muted">
-                Build it from the Library tab, then pull pieces in here.
+                Build it from the Database tab, then pull pieces in here.
               </p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="empty">
-              <p>No library items match those filters.</p>
+              <p>No database items match those filters.</p>
             </div>
           ) : (
             <div className="gallery">

@@ -114,8 +114,8 @@ export default function ItemEditor({
           <h2>
             {libraryMode
               ? item.name
-                ? "Edit library item"
-                : "New library item"
+                ? "Edit database item"
+                : "New database item"
               : item.name
                 ? "Edit item"
                 : "New item"}
@@ -333,9 +333,9 @@ export default function ItemEditor({
             <button
               className="btn ghost"
               onClick={() => onSaveToLibrary(draft)}
-              title="Save this piece to your master library for reuse"
+              title="Save this piece to your master database for reuse"
             >
-              ★ Save to library
+              ★ Save to database
             </button>
           )}
           <span className="spacer" />
@@ -343,7 +343,7 @@ export default function ItemEditor({
             Cancel
           </button>
           <button className="btn primary" onClick={() => onSave(draft)}>
-            {libraryMode ? "Save to library" : "Save item"}
+            {libraryMode ? "Save to database" : "Save item"}
           </button>
         </div>
       </div>

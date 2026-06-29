@@ -58,7 +58,7 @@ export default function LibraryView({
     <div className="library">
       <section className="library-head">
         <div>
-          <h1>Library</h1>
+          <h1>Database</h1>
           <p className="muted">
             Your master collection of tear sheets — reuse them across any client.
           </p>
@@ -68,7 +68,7 @@ export default function LibraryView({
             ⬆ Import
           </button>
           <button className="btn" onClick={onAdd}>
-            + Add to library
+            + Add to database
           </button>
           <button
             className="btn primary"
@@ -89,7 +89,7 @@ export default function LibraryView({
       <section className="filters">
         <input
           className="search"
-          placeholder="Search the library…"
+          placeholder="Search the database…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -142,20 +142,20 @@ export default function LibraryView({
 
       <main className="content">
         {loading ? (
-          <div className="loader" aria-label="Loading library">
+          <div className="loader" aria-label="Loading database">
             <span className="spinner" />
           </div>
         ) : library.length === 0 ? (
           <div className="empty">
-            <p>Your library is empty.</p>
+            <p>Your database is empty.</p>
             <p className="muted">
-              Add a piece, import a spreadsheet, or use “★ Save to library” on a
+              Add a piece, import a spreadsheet, or use “★ Save to database” on a
               client item to start building your master collection.
             </p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="empty">
-            <p>No library items match those filters.</p>
+            <p>No database items match those filters.</p>
           </div>
         ) : (
           <div className="gallery">

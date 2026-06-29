@@ -36,7 +36,7 @@ export default function RoomGroupedGallery({
       <div className="empty">
         <p>No items yet.</p>
         <p className="muted">
-          Add an item, import a spreadsheet, or pull pieces in from your library.
+          Add an item, import a spreadsheet, or pull pieces in from your database.
         </p>
       </div>
     );
