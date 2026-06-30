@@ -12,10 +12,17 @@ interface Props {
   project: Project;
   startIndex: number;
   onClose: () => void;
+  /** Show the vendor on each slide (visual only — matches the card toggle). */
+  showVendor?: boolean;
 }
 
 /** Full-screen, one-item-per-slide presentation mode. */
-export default function Slideshow({ project, startIndex, onClose }: Props) {
+export default function Slideshow({
+  project,
+  startIndex,
+  onClose,
+  showVendor = true,
+}: Props) {
   const items = project.items;
   const [index, setIndex] = useState(
     Math.min(Math.max(0, startIndex), Math.max(0, items.length - 1))
@@ -58,6 +65,10 @@ export default function Slideshow({ project, startIndex, onClose }: Props) {
   const total = lineTotal(it);
   const atStart = index === 0;
   const atEnd = index === items.length - 1;
+  // Vendor is hidden on the slide when the toggle is off; collection still shows.
+  const vendorLine = [showVendor ? it.vendor : "", it.collection]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="show">
@@ -97,11 +108,7 @@ export default function Slideshow({ project, startIndex, onClose }: Props) {
           <div className="slide-info">
             {it.category && <p className="slide-cat">{it.category}</p>}
             <h2 className="slide-title">{it.name || "Untitled item"}</h2>
-            {(it.vendor || it.collection) && (
-              <p className="slide-vendor">
-                {[it.vendor, it.collection].filter(Boolean).join(" · ")}
-              </p>
-            )}
+            {vendorLine && <p className="slide-vendor">{vendorLine}</p>}
 
             <dl className="slide-specs">
               {it.sku && (

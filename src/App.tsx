@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import "./App.css";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { useAuth } from "./auth/AuthProvider";
+import { useConfirm } from "./components/ConfirmProvider";
 import Login from "./auth/Login";
 import UpdatePassword from "./auth/UpdatePassword";
 import {
@@ -33,7 +34,19 @@ export default function App() {
     finishRecovery,
     signOut,
   } = useAuth();
+  const confirm = useConfirm();
   const [showAdmin, setShowAdmin] = useState(false);
+
+  // Every sign-out (workspace menu, admin panel, every gate screen) routes
+  // through here, so they all get the same confirmation prompt.
+  const guardedSignOut = useCallback(async () => {
+    const ok = await confirm({
+      title: "Sign out?",
+      message: "You'll need to sign in again to get back to your tear sheets.",
+      confirmLabel: "Sign out",
+    });
+    if (ok) await signOut();
+  }, [confirm, signOut]);
 
   if (!isSupabaseConfigured) return <SetupNeeded />;
   // A password-recovery link takes precedence over every other state: the user
@@ -48,7 +61,7 @@ export default function App() {
   // Without this gate the user would wrongly see "account pending setup".
   if (loadError) {
     return (
-      <AuthLoadError message={loadError} onRetry={refresh} onSignOut={signOut} />
+      <AuthLoadError message={loadError} onRetry={refresh} onSignOut={guardedSignOut} />
     );
   }
 
@@ -60,7 +73,7 @@ export default function App() {
       return (
         <AdminPanel
           adminEmail={email}
-          onSignOut={signOut}
+          onSignOut={guardedSignOut}
           onClose={canUseWorkspace ? () => setShowAdmin(false) : undefined}
         />
       );
@@ -71,18 +84,18 @@ export default function App() {
         userEmail={email}
         isPlatformAdmin
         onOpenAdmin={() => setShowAdmin(true)}
-        onSignOut={signOut}
+        onSignOut={guardedSignOut}
       />
     );
   }
 
   // Regular members need a firm and an active subscription.
   if (!profile || !firm) {
-    return <NoFirm email={email} onSignOut={signOut} />;
+    return <NoFirm email={email} onSignOut={guardedSignOut} />;
   }
   if (firm.subscription_status !== "active") {
     return (
-      <SubscriptionInactive firm={firm} email={email} onSignOut={signOut} />
+      <SubscriptionInactive firm={firm} email={email} onSignOut={guardedSignOut} />
     );
   }
 
@@ -92,7 +105,7 @@ export default function App() {
       userEmail={email}
       isPlatformAdmin={false}
       onOpenAdmin={() => setShowAdmin(true)}
-      onSignOut={signOut}
+      onSignOut={guardedSignOut}
     />
   );
 }

@@ -24,6 +24,8 @@ interface Props {
   onPresent?: () => void;
   /** Optional control rendered in the card body, e.g. a quick room selector. */
   extraControl?: ReactNode;
+  /** Show the vendor on the card (visual only — defaults to true). */
+  showVendor?: boolean;
 }
 
 /**
@@ -39,10 +41,16 @@ export default function ItemCard({
   onDelete,
   onPresent,
   extraControl,
+  showVendor = true,
 }: Props) {
   const qty = "quantity" in item ? item.quantity : 1;
   const total = "quantity" in item ? lineTotal(item) : item.price;
   const productLink = safeLinkUrl(item.productUrl);
+  // Vendor line text: drop the vendor when the card-level toggle hides it, but
+  // never the data itself (the item keeps its vendor; only the card hides it).
+  const vendorLine = [showVendor ? item.vendor : "", item.collection]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <article className={`card${selected ? " card-selected" : ""}`}>
@@ -76,11 +84,7 @@ export default function ItemCard({
       </div>
       <div className="card-body">
         <h3 className="card-title">{item.name || "Untitled item"}</h3>
-        {(item.vendor || item.collection) && (
-          <p className="card-vendor">
-            {[item.vendor, item.collection].filter(Boolean).join(" · ")}
-          </p>
-        )}
+        {vendorLine && <p className="card-vendor">{vendorLine}</p>}
         <dl className="card-specs">
           {item.sku && (
             <>

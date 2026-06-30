@@ -1,4 +1,5 @@
 import type { Item } from "../types";
+import { formatPrice, projectTotal } from "../util";
 import ItemCard from "./ItemCard";
 
 const UNASSIGNED = "Unassigned";
@@ -14,6 +15,8 @@ interface Props {
   onPresent: (item: Item) => void;
   /** Assign an item to a room (""/Unassigned clears it). */
   onSetRoom: (item: Item, room: string) => void;
+  /** Show the vendor on each card (visual only). */
+  showVendor?: boolean;
 }
 
 /**
@@ -30,6 +33,7 @@ export default function RoomGroupedGallery({
   onEdit,
   onPresent,
   onSetRoom,
+  showVendor = true,
 }: Props) {
   if (items.length === 0) {
     return (
@@ -46,11 +50,18 @@ export default function RoomGroupedGallery({
 
   return (
     <div className="room-groups">
-      {groups.map(([room, roomItems]) => (
+      {groups.map(([room, roomItems]) => {
+        const roomTotal = projectTotal(roomItems);
+        return (
         <section className="room-group" key={room}>
           <h2 className="room-group-title">
             {room}
             <span className="room-group-count">{roomItems.length}</span>
+            {roomTotal > 0 && (
+              <span className="room-group-total" title={`Total price for ${room}`}>
+                {formatPrice(roomTotal)}
+              </span>
+            )}
           </h2>
           <div className="gallery">
             {roomItems.map((it) => (
@@ -58,6 +69,7 @@ export default function RoomGroupedGallery({
                 key={it.id}
                 item={it}
                 selected={selected.has(it.id)}
+                showVendor={showVendor}
                 onToggleSelect={onToggleSelect}
                 onEdit={(item) => onEdit(item as Item)}
                 onPresent={() => onPresent(it)}
@@ -68,7 +80,8 @@ export default function RoomGroupedGallery({
             ))}
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -106,6 +106,15 @@
   color: var(--danger);
   border-color: #e3c7be;
 }
+/* Solid destructive button — used for the confirm action in delete dialogs. */
+.btn.danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.danger-solid:hover {
+  filter: brightness(0.93);
+}
 /* Anchors styled as buttons (e.g. "Visit ↗" product links). */
 a.btn {
   text-decoration: none;
@@ -437,6 +446,22 @@ a.btn {
 }
 .modal.wide {
   max-width: 680px;
+}
+/* Confirmation dialog (delete / sign-out). Sits above other modals because it
+   is rendered last in the DOM at the provider root with the same z-index. */
+.confirm-modal {
+  max-width: 420px;
+}
+.confirm-title {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+.confirm-body {
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.confirm-modal .modal-actions {
+  justify-content: flex-end;
 }
 .modal-head {
   display: flex;
@@ -794,6 +819,13 @@ a.btn {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 1px 9px;
+}
+/* Per-room price subtotal, pushed to the right edge of the room heading. */
+.room-group-total {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* Quick per-card room selector in the grouped view. */

@@ -15,11 +15,15 @@ interface Props {
   onImport: () => void;
   /** Print the given database items as tear sheets (all-filtered or selected). */
   onPrint: (items: LibraryItem[]) => void;
+  /** Delete the selected database items (with confirmation). */
+  onDeleteSelected: () => void;
   /** Copy the selected library items into the open client project. */
   onAddSelectedToClient: () => void;
   /** Name of the active client project, for the "add to" button label. */
   activeClientName: string | null;
   selectedCount: number;
+  /** Show the vendor on each card (visual only). */
+  showVendor?: boolean;
 }
 
 /**
@@ -37,9 +41,11 @@ export default function LibraryView({
   onDelete,
   onImport,
   onPrint,
+  onDeleteSelected,
   onAddSelectedToClient,
   activeClientName,
   selectedCount,
+  showVendor = true,
 }: Props) {
   const [search, setSearch] = useState("");
   const [vendor, setVendor] = useState("");
@@ -94,6 +100,14 @@ export default function LibraryView({
             title="Print only the selected items as tear sheets"
           >
             🖶 Print selected ({selectedCount})
+          </button>
+          <button
+            className="btn danger"
+            onClick={onDeleteSelected}
+            disabled={selectedCount === 0}
+            title="Delete the selected items from your database"
+          >
+            Delete selected ({selectedCount})
           </button>
           <button
             className="btn primary"
@@ -189,6 +203,7 @@ export default function LibraryView({
                 key={li.id}
                 item={li}
                 selected={selected.has(li.id)}
+                showVendor={showVendor}
                 onToggleSelect={onToggleSelect}
                 onEdit={(item) => onEdit(item as LibraryItem)}
                 onDelete={onDelete}

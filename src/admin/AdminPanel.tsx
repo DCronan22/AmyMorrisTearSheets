@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../components/ConfirmProvider";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
 import {
   createFirm,
@@ -26,6 +27,7 @@ interface Props {
 
 /** Platform owner's control panel: manage firms, access, and users. */
 export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
+  const confirm = useConfirm();
   const [firms, setFirms] = useState<Firm[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,11 +183,14 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                       <td>
                         <button
                           className="btn ghost small danger"
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              confirm(
-                                `Delete "${f.name}" and ALL its projects? This cannot be undone.`
-                              )
+                              await confirm({
+                                title: "Delete firm?",
+                                message: `Delete "${f.name}" and ALL its projects? This cannot be undone.`,
+                                confirmLabel: "Delete firm",
+                                danger: true,
+                              })
                             )
                               guard(() => deleteFirm(f.id));
                           }}
@@ -260,11 +265,14 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                         {p.email.toLowerCase() !== adminEmail.toLowerCase() && (
                           <button
                             className="btn ghost small danger"
-                            onClick={() => {
+                            onClick={async () => {
                               if (
-                                confirm(
-                                  `Remove ${p.email || p.full_name}? They will lose all access and be detached from their firm.`
-                                )
+                                await confirm({
+                                  title: "Remove user?",
+                                  message: `Remove ${p.email || p.full_name}? They will lose all access and be detached from their firm.`,
+                                  confirmLabel: "Remove user",
+                                  danger: true,
+                                })
                               )
                                 guard(() => deleteUser(p.id));
                             }}

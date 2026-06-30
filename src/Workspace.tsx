@@ -11,6 +11,7 @@ import {
   newId,
 } from "./types";
 import { useAuth } from "./auth/AuthProvider";
+import { useConfirm } from "./components/ConfirmProvider";
 import StyleEditor from "./branding/StyleEditor";
 import { exportProjectFile, parseBackupFile } from "./storage";
 import { exportItemsToSpreadsheet } from "./spreadsheet";
@@ -89,6 +90,19 @@ export default function Workspace({
   const [flash, setFlash] = useState<string | null>(null);
 
   const { applyFirm } = useAuth();
+  const confirm = useConfirm();
+  // Whether product cards show the vendor line. Visual only — the vendor data is
+  // untouched; persisted per firm so the choice sticks across reloads.
+  const [showVendor, setShowVendor] = useState(
+    () => localStorage.getItem(`ts_show_vendor_${firm.id}`) !== "0"
+  );
+  function toggleShowVendor() {
+    setShowVendor((v) => {
+      const next = !v;
+      localStorage.setItem(`ts_show_vendor_${firm.id}`, next ? "1" : "0");
+      return next;
+    });
+  }
   // The set of items to render in the print layout (selected subset or all).
   const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
   const restoreInput = useRef<HTMLInputElement>(null);
@@ -245,12 +259,39 @@ export default function Workspace({
     if (isNew) void mirrorToLibrary([item]);
   }
 
-  function deleteItem(id: string) {
+  async function deleteItem(id: string) {
+    const ok = await confirm({
+      title: "Delete item?",
+      message: "This removes the item from this project. It can't be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     applyProjectChange((p) => ({
       ...p,
       items: p.items.filter((i) => i.id !== id),
     }));
     setEditing(null);
+  }
+
+  // Bulk-delete the currently selected client items.
+  async function deleteSelected() {
+    const ids = new Set(selectedItems.map((it) => it.id));
+    if (ids.size === 0) return;
+    const ok = await confirm({
+      title: `Delete ${ids.size} item${ids.size === 1 ? "" : "s"}?`,
+      message: `This removes the ${ids.size} selected item${
+        ids.size === 1 ? "" : "s"
+      } from this project. It can't be undone.`,
+      confirmLabel: `Delete ${ids.size}`,
+      danger: true,
+    });
+    if (!ok) return;
+    applyProjectChange((p) => ({
+      ...p,
+      items: p.items.filter((i) => !ids.has(i.id)),
+    }));
+    clearSelection();
   }
 
   // Save a copy of an existing item as a new item (fresh id, "(copy)" name).
@@ -336,8 +377,14 @@ export default function Workspace({
   }
 
   async function removeLibraryItem(id: string) {
-    if (!confirm("Remove this piece from your database? Client projects that already use it are unaffected."))
-      return;
+    const ok = await confirm({
+      title: "Remove from database?",
+      message:
+        "Remove this piece from your database? Client projects that already use it are unaffected.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setLibraryError(null);
     try {
       await deleteLibraryItem(id);
@@ -352,6 +399,40 @@ export default function Workspace({
       setLibraryError(
         e instanceof Error ? e.message : "Could not delete the database item."
       );
+    }
+  }
+
+  // Bulk-remove the selected database items.
+  async function removeLibrarySelected() {
+    const ids = [...librarySelected].filter((id) =>
+      library.some((l) => l.id === id)
+    );
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: `Remove ${ids.length} from database?`,
+      message: `Remove the ${ids.length} selected piece${
+        ids.length === 1 ? "" : "s"
+      } from your database? Client projects that already use them are unaffected.`,
+      confirmLabel: `Remove ${ids.length}`,
+      danger: true,
+    });
+    if (!ok) return;
+    setLibraryError(null);
+    // Delete independently so one failure (RLS/network) doesn't strand the
+    // others: drop only the rows that actually succeeded, keep the rest
+    // selected, and tell the user if some couldn't be removed.
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteLibraryItem(id))
+    );
+    const removed = new Set(
+      ids.filter((_, i) => results[i].status === "fulfilled")
+    );
+    setLibrary((ls) => ls.filter((l) => !removed.has(l.id)));
+    setLibrarySelected(
+      (prev) => new Set([...prev].filter((id) => !removed.has(id)))
+    );
+    if (results.some((r) => r.status === "rejected")) {
+      setLibraryError("Some items couldn't be deleted. Please try again.");
     }
   }
 
@@ -495,14 +576,15 @@ export default function Workspace({
         return;
       }
       const itemCount = restored.reduce((n, p) => n + p.items.length, 0);
-      if (
-        !confirm(
+      const ok = await confirm({
+        title: "Restore backup?",
+        message:
           `Restore ${restored.length} project${restored.length === 1 ? "" : "s"} ` +
-            `(${itemCount} item${itemCount === 1 ? "" : "s"}) from this backup? ` +
-            "They'll be added alongside your current projects — nothing is overwritten."
-        )
-      )
-        return;
+          `(${itemCount} item${itemCount === 1 ? "" : "s"}) from this backup? ` +
+          "They'll be added alongside your current projects — nothing is overwritten.",
+        confirmLabel: "Restore",
+      });
+      if (!ok) return;
       const stored: Project[] = [];
       for (const p of restored) {
         stored.push(await dbCreateProject(firm.id, p));
@@ -517,8 +599,13 @@ export default function Workspace({
   }
 
   async function removeProject(id: string) {
-    if (!confirm("Delete this project and all its items? This cannot be undone."))
-      return;
+    const ok = await confirm({
+      title: "Delete project?",
+      message: "Delete this project and all its items? This cannot be undone.",
+      confirmLabel: "Delete project",
+      danger: true,
+    });
+    if (!ok) return;
     setSaveError(null);
     try {
       await dbDeleteProject(id);
@@ -741,6 +828,9 @@ export default function Workspace({
                 >
                   Export selected ({selectedCount}) (.xlsx)
                 </button>
+                <button onClick={toggleShowVendor}>
+                  {showVendor ? "✓ " : ""}Show vendor on cards
+                </button>
                 <button onClick={() => exportProjectFile(backupData)}>
                   Export backup (.json)
                 </button>
@@ -793,9 +883,11 @@ export default function Workspace({
               setImporting(true);
             }}
             onPrint={(items) => print(items.map(libraryToItem))}
+            onDeleteSelected={removeLibrarySelected}
             onAddSelectedToClient={addLibrarySelectionToClient}
             activeClientName={project.name}
             selectedCount={librarySelected.size}
+            showVendor={showVendor}
           />
         ) : (
         <>
@@ -925,6 +1017,14 @@ export default function Workspace({
           >
             Clear
           </button>
+          <button
+            className="btn ghost small danger"
+            onClick={deleteSelected}
+            disabled={selectedCount === 0}
+            title="Delete the selected items from this project"
+          >
+            Delete selected ({selectedCount})
+          </button>
           <span className="muted small select-count">
             {selectedCount} selected
           </span>
@@ -935,6 +1035,7 @@ export default function Workspace({
             items={filtered}
             rooms={rooms}
             selected={selectedIds}
+            showVendor={showVendor}
             onToggleSelect={toggleSelect}
             onEdit={setEditing}
             onSetRoom={setItemRoom}
@@ -1007,6 +1108,7 @@ export default function Workspace({
         <Slideshow
           project={project}
           startIndex={showIndex}
+          showVendor={showVendor}
           onClose={() => setShowIndex(null)}
         />
       )}
