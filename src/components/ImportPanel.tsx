@@ -1,43 +1,123 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Item } from "../types";
 import { parseSpreadsheet, downloadTemplate } from "../spreadsheet";
 import { parsePptx } from "../pptx";
 
 interface Props {
-  onImport: (items: Item[], mode: "append" | "replace") => void;
+  onImport: (items: Item[], mode: "append" | "replace") => void | Promise<void>;
   onClose: () => void;
+  /** Where the import lands — drives the wording and the action buttons. */
+  target?: "client" | "library";
+  /** Name of the active client project (shown when target is "client"). */
+  destinationName?: string;
 }
 
-/** Drag-and-drop spreadsheet importer with auto column mapping. */
-export default function ImportPanel({ onImport, onClose }: Props) {
+// Files we can actually parse. Anything else is rejected up front with a clear
+// message instead of being handed to a parser that would throw something cryptic.
+const SUPPORTED = /\.(xlsx|xls|csv|pptx)$/i;
+const ACCEPT = ".xlsx,.xls,.csv,.pptx";
+// xlsx/pptx are zipped, so even big decks stay well under this. The guard is
+// really there to stop someone dropping a 500 MB video and freezing the tab.
+const MAX_BYTES = 25 * 1024 * 1024;
+
+/** Drag-and-drop spreadsheet / PowerPoint importer with auto column mapping. */
+export default function ImportPanel({
+  onImport,
+  onClose,
+  target = "client",
+  destinationName,
+}: Props) {
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Item[] | null>(null);
   const [matched, setMatched] = useState<string[]>([]);
+  // Parsing a file (reading/mapping) vs. submitting the matched items onward.
+  const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // Depth counter so dragging over a child element doesn't clear the highlight
+  // (dragenter/dragleave fire for every nested node).
+  const dragDepth = useRef(0);
+
+  const toLibrary = target === "library";
+  const destination = toLibrary
+    ? "your database"
+    : destinationName
+    ? `“${destinationName}”`
+    : "this project";
+
+  // Escape closes the modal (unless an import is mid-flight); focus the close
+  // button on open so keyboard users land inside the dialog.
+  useEffect(() => {
+    closeRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !submitting && !busy) {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, submitting, busy]);
 
   async function handleFile(file: File) {
+    // Fresh selection: wipe any previous outcome so stale messages don't linger.
     setError(null);
+    setStatus(null);
+    setNote(null);
+
+    if (!SUPPORTED.test(file.name)) {
+      setError(
+        `“${file.name}” isn’t a supported file. Please choose an Excel (.xlsx, .xls), CSV, or PowerPoint (.pptx) file.`
+      );
+      return;
+    }
+    if (file.size === 0) {
+      setError(`“${file.name}” is empty — there’s nothing to import.`);
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setError(
+        `“${file.name}” is too large (over ${Math.round(
+          MAX_BYTES / (1024 * 1024)
+        )} MB). Try exporting just the items you need.`
+      );
+      return;
+    }
+
     const isPptx = /\.pptx$/i.test(file.name);
+    setBusy(true);
     setStatus(
-      isPptx
-        ? `Reading slides from “${file.name}”…`
-        : `Reading “${file.name}”…`
+      isPptx ? `Reading slides from “${file.name}”…` : `Reading “${file.name}”…`
     );
     try {
       const result = isPptx
         ? await parsePptx(file)
         : await parseSpreadsheet(file);
+
       if (result.items.length === 0) {
-        setError(
-          isPptx
-            ? "No tear sheets found in that PowerPoint. Each slide should have the product name, dimensions, price, and lead time."
-            : "No items found. Make sure the first row has column headers like Item, Vendor, Price."
-        );
         setStatus(null);
+        if (isPptx) {
+          setError(
+            "No tear sheets found in that PowerPoint. Each slide should have the product name, dimensions, price, and lead time."
+          );
+        } else if (result.matchedColumns.length === 0) {
+          setError(
+            "We couldn’t recognize any columns. Make sure the first row has headers like Item, Vendor, and Price — or download the template below."
+          );
+        } else {
+          setError(
+            `We matched your columns (${result.matchedColumns.join(
+              ", "
+            )}) but found no rows with item data underneath.`
+          );
+        }
         return;
       }
+
       setPending(result.items);
       setMatched(result.matchedColumns);
       setStatus(
@@ -52,30 +132,78 @@ export default function ImportPanel({ onImport, onClose }: Props) {
         }.`
       );
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Could not read that file."
-      );
       setStatus(null);
+      // Parsers can throw library-internal errors; show a friendly line and keep
+      // the technical detail only as a hint.
+      const detail = e instanceof Error ? e.message : "";
+      setError(
+        `We couldn’t read “${file.name}”. It may be corrupted or not a real ${
+          isPptx ? "PowerPoint" : "spreadsheet"
+        } file.${detail ? ` (${detail})` : ""}`
+      );
+    } finally {
+      setBusy(false);
     }
+  }
+
+  // Take the first file from a picker/drop, warning when several were chosen.
+  function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+      setNote(
+        `Importing one file at a time — using “${files[0].name}”. Re-open Import to add the others.`
+      );
+    }
+    void handleFile(files[0]);
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    dragDepth.current = 0;
     setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (busy || submitting) return;
+    handleFiles(e.dataTransfer.files);
   }
 
-  function confirm(mode: "append" | "replace") {
-    if (pending) onImport(pending, mode);
+  async function confirm(mode: "append" | "replace") {
+    if (!pending || pending.length === 0 || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onImport(pending, mode);
+      onClose();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "We couldn’t complete the import. Please try again."
+      );
+      setSubmitting(false);
+    }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-backdrop"
+      onClick={() => !submitting && !busy && onClose()}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-title"
+        aria-busy={busy || submitting}
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="modal-head">
-          <h2>Import from spreadsheet</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <h2 id="import-title">Import into {destination}</h2>
+          <button
+            ref={closeRef}
+            className="icon-btn"
+            onClick={onClose}
+            disabled={submitting}
+            aria-label="Close import"
+          >
             ×
           </button>
         </header>
@@ -84,31 +212,57 @@ export default function ImportPanel({ onImport, onClose }: Props) {
           <>
             <div
               className={`dropzone ${dragging ? "dragging" : ""}`}
-              onDragOver={(e) => {
+              role="button"
+              tabIndex={0}
+              aria-label="Drop a file here, or activate to browse"
+              aria-disabled={busy}
+              onDragEnter={(e) => {
                 e.preventDefault();
-                setDragging(true);
+                dragDepth.current += 1;
+                if (!busy) setDragging(true);
               }}
-              onDragLeave={() => setDragging(false)}
+              onDragOver={(e) => e.preventDefault()}
+              onDragLeave={() => {
+                dragDepth.current = Math.max(0, dragDepth.current - 1);
+                if (dragDepth.current === 0) setDragging(false);
+              }}
               onDrop={onDrop}
-              onClick={() => inputRef.current?.click()}
+              onClick={() => !busy && inputRef.current?.click()}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && !busy) {
+                  e.preventDefault();
+                  inputRef.current?.click();
+                }
+              }}
             >
-              <div className="dropzone-icon">⬆</div>
+              <div className="dropzone-icon" aria-hidden="true">
+                {busy ? <span className="spinner" /> : "⬆"}
+              </div>
               <p>
-                <strong>Drop an Excel, CSV, or PowerPoint file here</strong>
+                <strong>
+                  {busy
+                    ? "Reading your file…"
+                    : "Drop an Excel, CSV, or PowerPoint file here"}
+                </strong>
               </p>
-              <p className="muted">or click to browse</p>
+              {!busy && <p className="muted">or click to browse</p>}
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv,.pptx"
+                accept={ACCEPT}
                 hidden
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFile(f);
+                  handleFiles(e.target.files);
+                  // Reset so picking the SAME file again still fires onChange.
+                  e.target.value = "";
                 }}
               />
             </div>
             <p className="muted small">
+              {toLibrary
+                ? "Imported pieces are added to your master database (existing entries are kept)."
+                : `Imported items are added to ${destination}.`}
+              <br />
               <strong>Spreadsheets:</strong> columns are matched automatically
               (Item, Vendor, Collection, Category, Room, SKU, Price, Qty,
               Dimensions, Material, Color, Lead Time, Notes, Image URL, Product
@@ -125,7 +279,12 @@ export default function ImportPanel({ onImport, onClose }: Props) {
         )}
 
         {status && <p className="status-ok">{status}</p>}
-        {error && <p className="status-err">{error}</p>}
+        {note && <p className="muted small">{note}</p>}
+        {error && (
+          <p className="status-err" role="alert">
+            {error}
+          </p>
+        )}
 
         {pending && (
           <>
@@ -147,15 +306,43 @@ export default function ImportPanel({ onImport, onClose }: Props) {
               )}
             </div>
             <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setPending(null)}>
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  setPending(null);
+                  setStatus(null);
+                  setMatched([]);
+                }}
+                disabled={submitting}
+              >
                 Choose a different file
               </button>
-              <button className="btn" onClick={() => confirm("append")}>
-                Add to current items
-              </button>
-              <button className="btn primary" onClick={() => confirm("replace")}>
-                Replace all items
-              </button>
+              {toLibrary ? (
+                <button
+                  className="btn primary"
+                  onClick={() => confirm("append")}
+                  disabled={submitting || pending.length === 0}
+                >
+                  {submitting ? "Adding…" : `Add ${pending.length} to database`}
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="btn"
+                    onClick={() => confirm("append")}
+                    disabled={submitting || pending.length === 0}
+                  >
+                    {submitting ? "Adding…" : "Add to current items"}
+                  </button>
+                  <button
+                    className="btn primary"
+                    onClick={() => confirm("replace")}
+                    disabled={submitting || pending.length === 0}
+                  >
+                    {submitting ? "Replacing…" : "Replace all items"}
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}

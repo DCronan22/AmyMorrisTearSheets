@@ -185,6 +185,9 @@ export default function Workspace({
 
   // Set the print subset, print, then reset once printing finishes.
   function print(items?: Item[]) {
+    // An explicit empty set (e.g. a stale database selection) would open a blank
+    // print dialog; bail. `undefined` still means "print the whole project".
+    if (items && items.length === 0) return;
     setPrintItems(items);
     const reset = () => {
       setPrintItems(undefined);
@@ -266,7 +269,7 @@ export default function Workspace({
       ...p,
       items: mode === "replace" ? items : [...p.items, ...items],
     }));
-    setImporting(false);
+    // The ImportPanel closes itself once this resolves.
     // Imported client items also seed the master library (deduped).
     void mirrorToLibrary(items);
   }
@@ -352,24 +355,19 @@ export default function Workspace({
     }
   }
 
-  // Spreadsheet/PowerPoint import targeted at the library (additive).
+  // Spreadsheet/PowerPoint import targeted at the library (always additive).
+  // Errors propagate so the open ImportPanel can show them and stay open.
   async function importToLibrary(items: Item[]) {
-    setImporting(false);
     setLibraryError(null);
-    try {
-      const saved = await createLibraryItems(firm.id, items.map(itemToLibrary));
-      setLibrary((ls) => [...saved, ...ls]);
-      flashMsg(`Added ${saved.length} to your database.`);
-    } catch (e) {
-      setLibraryError(
-        e instanceof Error ? e.message : "Could not import into the database."
-      );
-    }
+    const saved = await createLibraryItems(firm.id, items.map(itemToLibrary));
+    setLibrary((ls) => [...saved, ...ls]);
+    flashMsg(`Added ${saved.length} to your database.`);
   }
 
-  // Route an ImportPanel result to whichever destination opened it.
-  function routeImport(items: Item[], mode: "append" | "replace") {
-    if (importTarget === "library") void importToLibrary(items);
+  // Route an ImportPanel result to whichever destination opened it. Returns a
+  // promise so the panel can show a busy state and surface failures inline.
+  async function routeImport(items: Item[], mode: "append" | "replace") {
+    if (importTarget === "library") await importToLibrary(items);
     else handleImport(items, mode);
   }
 
@@ -794,6 +792,7 @@ export default function Workspace({
               setImportTarget("library");
               setImporting(true);
             }}
+            onPrint={(items) => print(items.map(libraryToItem))}
             onAddSelectedToClient={addLibrarySelectionToClient}
             activeClientName={project.name}
             selectedCount={librarySelected.size}
@@ -997,7 +996,12 @@ export default function Workspace({
         />
       )}
       {importing && (
-        <ImportPanel onImport={routeImport} onClose={() => setImporting(false)} />
+        <ImportPanel
+          onImport={routeImport}
+          onClose={() => setImporting(false)}
+          target={importTarget}
+          destinationName={importTarget === "client" ? project.name : undefined}
+        />
       )}
       {showIndex !== null && (
         <Slideshow

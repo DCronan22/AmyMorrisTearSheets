@@ -13,6 +13,8 @@ interface Props {
   onEdit: (li: LibraryItem) => void;
   onDelete: (id: string) => void;
   onImport: () => void;
+  /** Print the given database items as tear sheets (all-filtered or selected). */
+  onPrint: (items: LibraryItem[]) => void;
   /** Copy the selected library items into the open client project. */
   onAddSelectedToClient: () => void;
   /** Name of the active client project, for the "add to" button label. */
@@ -34,6 +36,7 @@ export default function LibraryView({
   onEdit,
   onDelete,
   onImport,
+  onPrint,
   onAddSelectedToClient,
   activeClientName,
   selectedCount,
@@ -69,6 +72,28 @@ export default function LibraryView({
           </button>
           <button className="btn" onClick={onAdd}>
             + Add to database
+          </button>
+          <button
+            className="btn"
+            onClick={() => onPrint(filtered)}
+            disabled={filtered.length === 0}
+            title={
+              hasFilter
+                ? "Print the items matching these filters as tear sheets"
+                : "Print every database item as a tear sheet"
+            }
+          >
+            🖶 Print{hasFilter ? ` (${filtered.length})` : ""}
+          </button>
+          <button
+            className="btn"
+            onClick={() =>
+              onPrint(library.filter((li) => selected.has(li.id)))
+            }
+            disabled={selectedCount === 0}
+            title="Print only the selected items as tear sheets"
+          >
+            🖶 Print selected ({selectedCount})
           </button>
           <button
             className="btn primary"
