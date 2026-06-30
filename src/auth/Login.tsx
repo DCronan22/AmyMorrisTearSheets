@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "./AuthProvider";
 
 type Mode = "signin" | "signup" | "reset";
 
@@ -10,6 +11,7 @@ const resetRedirectTo = () =>
 
 /** Email + password sign-in / sign-up screen shown when no user is logged in. */
 export default function Login() {
+  const { recoveryError, clearRecoveryError } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -87,6 +89,13 @@ export default function Login() {
           </p>
         )}
 
+        {recoveryError && mode === "signin" && (
+          <p className="status-err" role="alert">
+            {recoveryError} Reset links can only be used once and expire quickly
+            — request a fresh one and open it right away.
+          </p>
+        )}
+
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && (
             <label>
@@ -134,6 +143,7 @@ export default function Login() {
                   setMode("reset");
                   setError(null);
                   setNotice(null);
+                  clearRecoveryError();
                 }}
               >
                 Forgot password?

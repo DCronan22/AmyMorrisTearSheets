@@ -23,6 +23,10 @@ interface AuthState {
   /** True when the user arrived from a password-recovery email link and must
    *  choose a new password before using the app. */
   recovering: boolean;
+  /** Message describing a failed recovery link (expired/used), or null. */
+  recoveryError: string | null;
+  /** Dismiss the recovery-error banner (e.g. when requesting a new link). */
+  clearRecoveryError: () => void;
   isPlatformAdmin: boolean;
   /** Re-fetch profile + firm (e.g. after an admin change or a load error). */
   refresh: () => Promise<void>;
@@ -45,6 +49,32 @@ function withSafeStyle(firm: Firm | null): Firm | null {
   };
 }
 
+/**
+ * Read auth params out of the URL once, at module load, before the Supabase
+ * client processes and strips them. Supabase puts both successful recovery
+ * tokens and failures (e.g. an expired/already-used link from an email
+ * scanner: `error_code=otp_expired`) in the hash for the implicit flow, with
+ * `?query` as a fallback. We surface the failure instead of silently bouncing
+ * the user to the sign-in screen.
+ */
+const initialAuthUrl = (() => {
+  if (typeof window === "undefined") {
+    return { recovering: false, error: null as string | null };
+  }
+  const raw =
+    (window.location.hash.replace(/^#/, "") ||
+      window.location.search.replace(/^\?/, "")) ??
+    "";
+  const params = new URLSearchParams(raw);
+  const recovering = params.get("type") === "recovery";
+  const errCode = params.get("error_code") || params.get("error");
+  const error = errCode
+    ? params.get("error_description")?.trim() ||
+      "Your reset link is invalid or has expired. Please request a new one."
+    : null;
+  return { recovering, error };
+})();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -54,10 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Detect a recovery link synchronously on first render so we never flash the
   // workspace before the "set a new password" screen. The Supabase client also
   // emits a PASSWORD_RECOVERY event (handled below) as a backup for PKCE links.
-  const [recovering, setRecovering] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.location.hash.includes("type=recovery");
-  });
+  const [recovering, setRecovering] = useState(initialAuthUrl.recovering);
+  // A failed recovery link (expired/used) — shown on the sign-in screen.
+  const [recoveryError, setRecoveryError] = useState<string | null>(
+    initialAuthUrl.error
+  );
   // The user id the current profile/firm state belongs to, so the auth
   // listener can tell real account changes apart from token refreshes.
   const loadedUserIdRef = useRef<string | undefined>(undefined);
@@ -159,9 +190,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadProfile]);
 
+  // A failed recovery link leaves error params in the URL; clear them once so a
+  // refresh doesn't keep re-showing the message (the banner stays via state).
+  useEffect(() => {
+    if (
+      initialAuthUrl.error &&
+      typeof window !== "undefined" &&
+      (window.location.hash || window.location.search)
+    ) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   const applyFirm = useCallback((next: Firm) => {
     setFirm(withSafeStyle(next));
   }, []);
+
+  const clearRecoveryError = useCallback(() => setRecoveryError(null), []);
 
   const finishRecovery = useCallback(async () => {
     setRecovering(false);
@@ -199,6 +244,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       loadError,
       recovering,
+      recoveryError,
+      clearRecoveryError,
       isPlatformAdmin: profile?.role === "platform_admin",
       refresh,
       applyFirm,
@@ -212,6 +259,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       loadError,
       recovering,
+      recoveryError,
+      clearRecoveryError,
       refresh,
       applyFirm,
       finishRecovery,
