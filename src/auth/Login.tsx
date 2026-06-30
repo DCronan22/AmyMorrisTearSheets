@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "reset";
+
+/** Where Supabase should send the recovery link back to. Matches the project's
+ *  Site URL / allowed redirect URLs (works in dev and on Vercel alike). */
+const resetRedirectTo = () =>
+  `${window.location.origin}${import.meta.env.BASE_URL}`;
 
 /** Email + password sign-in / sign-up screen shown when no user is logged in. */
 export default function Login() {
@@ -19,7 +24,18 @@ export default function Login() {
     setError(null);
     setNotice(null);
     try {
-      if (mode === "signup") {
+      if (mode === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(
+          email.trim(),
+          { redirectTo: resetRedirectTo() }
+        );
+        if (error) throw error;
+        // Don't reveal whether the address has an account.
+        setNotice(
+          "If an account exists for that email, we've sent a link to reset your password. Check your inbox (and spam)."
+        );
+        setMode("signin");
+      } else if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -57,8 +73,19 @@ export default function Login() {
         </div>
 
         <h1 className="auth-title">
-          {mode === "signin" ? "Sign in" : "Create your account"}
+          {mode === "signin"
+            ? "Sign in"
+            : mode === "signup"
+              ? "Create your account"
+              : "Reset your password"}
         </h1>
+
+        {mode === "reset" && (
+          <p className="muted small">
+            Enter your account email and we'll send you a link to set a new
+            password.
+          </p>
+        )}
 
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && (
@@ -82,19 +109,37 @@ export default function Login() {
               required
             />
           </label>
-          <label>
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={
-                mode === "signin" ? "current-password" : "new-password"
-              }
-              minLength={6}
-              required
-            />
-          </label>
+          {mode !== "reset" && (
+            <label>
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={
+                  mode === "signin" ? "current-password" : "new-password"
+                }
+                minLength={6}
+                required
+              />
+            </label>
+          )}
+
+          {mode === "signin" && (
+            <p className="auth-forgot">
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setMode("reset");
+                  setError(null);
+                  setNotice(null);
+                }}
+              >
+                Forgot password?
+              </button>
+            </p>
+          )}
 
           {error && <p className="status-err">{error}</p>}
           {notice && <p className="status-ok">{notice}</p>}
@@ -104,7 +149,9 @@ export default function Login() {
               ? "Please wait…"
               : mode === "signin"
                 ? "Sign in"
-                : "Create account"}
+                : mode === "signup"
+                  ? "Create account"
+                  : "Send reset link"}
           </button>
         </form>
 
@@ -118,7 +165,7 @@ export default function Login() {
             </>
           ) : (
             <>
-              Already have an account?{" "}
+              {mode === "reset" ? "Remembered it? " : "Already have an account? "}
               <button className="link-btn" onClick={() => setMode("signin")}>
                 Sign in
               </button>

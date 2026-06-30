@@ -1205,6 +1205,12 @@ a.btn {
   border-color: var(--accent);
 }
 
+.auth-forgot {
+  margin: -6px 0 0;
+  text-align: right;
+  font-size: 13px;
+}
+
 .auth-submit {
   margin-top: 4px;
   width: 100%;

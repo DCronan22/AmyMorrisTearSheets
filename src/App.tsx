@@ -3,6 +3,7 @@ import "./App.css";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { useAuth } from "./auth/AuthProvider";
 import Login from "./auth/Login";
+import UpdatePassword from "./auth/UpdatePassword";
 import {
   SetupNeeded,
   FullScreenLoader,
@@ -26,13 +27,18 @@ export default function App() {
     firm,
     loading,
     loadError,
+    recovering,
     isPlatformAdmin,
     refresh,
+    finishRecovery,
     signOut,
   } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
 
   if (!isSupabaseConfigured) return <SetupNeeded />;
+  // A password-recovery link takes precedence over every other state: the user
+  // must set a new password before continuing, even though they have a session.
+  if (recovering) return <UpdatePassword onDone={finishRecovery} />;
   if (loading) return <FullScreenLoader />;
   if (!session) return <Login />;
 
