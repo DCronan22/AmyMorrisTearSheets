@@ -1,6 +1,8 @@
+import { memo } from "react";
 import type { Item } from "../types";
 import { formatPrice, projectTotal } from "../util";
 import ItemCard from "./ItemCard";
+import type { CardItem } from "./ItemCard";
 
 const UNASSIGNED = "Unassigned";
 const NEW_ROOM = "__new__";
@@ -22,8 +24,7 @@ interface Props {
 /**
  * The client project view: items grouped under room headings, with a quick
  * room selector on each card so a freshly-added "Unassigned" pile can be sorted
- * without opening the editor. Room order is first-seen, with Unassigned last —
- * matching how TearSheetPrint groups rooms for printing.
+ * without opening the editor. Room order is first-seen, with Unassigned last.
  */
 export default function RoomGroupedGallery({
   items,
@@ -65,17 +66,16 @@ export default function RoomGroupedGallery({
           </h2>
           <div className="gallery">
             {roomItems.map((it) => (
-              <ItemCard
+              <RoomGroupedCard
                 key={it.id}
                 item={it}
+                rooms={rooms}
                 selected={selected.has(it.id)}
                 showVendor={showVendor}
                 onToggleSelect={onToggleSelect}
-                onEdit={(item) => onEdit(item as Item)}
-                onPresent={() => onPresent(it)}
-                extraControl={
-                  <RoomSelect item={it} rooms={rooms} onSetRoom={onSetRoom} />
-                }
+                onEdit={onEdit}
+                onPresent={onPresent}
+                onSetRoom={onSetRoom}
               />
             ))}
           </div>
@@ -85,6 +85,44 @@ export default function RoomGroupedGallery({
     </div>
   );
 }
+
+/**
+ * One card in the grouped view. Memoized so a search keystroke or a selection
+ * toggle only re-renders the cards whose props actually changed — galleries can
+ * hold hundreds of image-heavy cards. The per-card closures (present, room
+ * select) are created in here, where memo already scopes them to this item.
+ */
+const RoomGroupedCard = memo(function RoomGroupedCard({
+  item,
+  rooms,
+  selected,
+  showVendor,
+  onToggleSelect,
+  onEdit,
+  onPresent,
+  onSetRoom,
+}: {
+  item: Item;
+  rooms: string[];
+  selected: boolean;
+  showVendor: boolean;
+  onToggleSelect: (id: string) => void;
+  onEdit: (item: Item) => void;
+  onPresent: (item: Item) => void;
+  onSetRoom: (item: Item, room: string) => void;
+}) {
+  return (
+    <ItemCard
+      item={item}
+      selected={selected}
+      showVendor={showVendor}
+      onToggleSelect={onToggleSelect}
+      onEdit={(it: CardItem) => onEdit(it as Item)}
+      onPresent={() => onPresent(item)}
+      extraControl={<RoomSelect item={item} rooms={rooms} onSetRoom={onSetRoom} />}
+    />
+  );
+});
 
 /** A compact room picker shown on each card in the grouped view. */
 function RoomSelect({

@@ -3,7 +3,7 @@ import type { Item, Project } from "../types";
 import {
   formatPrice,
   lineTotal,
-  PLACEHOLDER_IMG,
+  onImgError,
   safeImageUrl,
   safeLinkUrl,
 } from "../util";
@@ -100,9 +100,7 @@ export default function Slideshow({
             <img
               src={safeImageUrl(it.imageUrl)}
               alt={it.name}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
-              }}
+              onError={onImgError}
             />
           </div>
           <div className="slide-info">

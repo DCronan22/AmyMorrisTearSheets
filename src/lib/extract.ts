@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { authedPostJson, apiErrorMessage } from "./api";
 
 // Fields the extractor may return (mirrors the server's ExtractedFields).
 export interface AutofillFields {
@@ -28,35 +28,18 @@ export async function autofill(input: {
   text?: string;
   aiFallback?: boolean;
 }): Promise<AutofillResult> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const res = await fetch("/api/extract", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(input),
-  });
-  let json: unknown = {};
-  try {
-    json = await res.json();
-  } catch {
-    /* non-JSON error */
-  }
+  const { res, json } = await authedPostJson("/api/extract", input);
   if (!res.ok) {
-    const msg =
-      (json as { error?: string }).error || "Auto-fill failed. Try again.";
-    throw new Error(msg);
+    throw new Error(apiErrorMessage(json, "Auto-fill failed. Try again."));
   }
   return json as AutofillResult;
 }
 
-/**
- * Downscale a logo to a small PNG data URL, preserving transparency (unlike the
- * JPEG path below). Logos are small, so this stays well within the row budget.
- */
-export function compressLogoFile(file: File, maxDim = 480): Promise<string> {
+/** Shared downscale-to-data-URL pipeline for the two compressors below. */
+function compressImage(
+  file: File,
+  opts: { maxDim: number; mime: "image/png" | "image/jpeg"; quality?: number }
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read that image."));
@@ -64,7 +47,7 @@ export function compressLogoFile(file: File, maxDim = 480): Promise<string> {
       const img = new Image();
       img.onerror = () => reject(new Error("That image couldn't be loaded."));
       img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const scale = Math.min(1, opts.maxDim / Math.max(img.width, img.height));
         const w = Math.round(img.width * scale);
         const h = Math.round(img.height * scale);
         const canvas = document.createElement("canvas");
@@ -73,12 +56,20 @@ export function compressLogoFile(file: File, maxDim = 480): Promise<string> {
         const ctx = canvas.getContext("2d");
         if (!ctx) return reject(new Error("Image processing unavailable."));
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/png"));
+        resolve(canvas.toDataURL(opts.mime, opts.quality));
       };
       img.src = String(reader.result);
     };
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Downscale a logo to a small PNG data URL, preserving transparency (unlike the
+ * JPEG path below). Logos are small, so this stays well within the row budget.
+ */
+export function compressLogoFile(file: File, maxDim = 480): Promise<string> {
+  return compressImage(file, { maxDim, mime: "image/png" });
 }
 
 /**
@@ -90,26 +81,5 @@ export function compressImageFile(
   maxDim = 1280,
   quality = 0.82
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read that image."));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("That image couldn't be loaded."));
-      img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Image processing unavailable."));
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
+  return compressImage(file, { maxDim, mime: "image/jpeg", quality });
 }

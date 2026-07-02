@@ -1,5 +1,6 @@
+import { memo } from "react";
 import type { Item, Project } from "../types";
-import { formatPrice, safeImageUrl, PLACEHOLDER_IMG } from "../util";
+import { formatPrice, onImgError, safeImageUrl } from "../util";
 import logoUrl from "../assets/amy-morris-logo.png";
 
 interface Props {
@@ -15,9 +16,11 @@ interface Props {
  * details block (name / dimensions / price / lead time) at the bottom.
  *
  * Hidden on screen (see App.css) and revealed only while printing, so the
- * browser's "Save as PDF" produces clean tear sheets.
+ * browser's "Save as PDF" produces clean tear sheets. Memoized: it stays
+ * mounted (so images are loaded before the print dialog opens) and renders a
+ * page per item, so it must not re-render on every workspace keystroke.
  */
-export default function TearSheetPrint({ project, items }: Props) {
+function TearSheetPrint({ project, items }: Props) {
   const list = items ?? project.items;
   return (
     <div className="ts-print-root" aria-hidden>
@@ -32,9 +35,7 @@ export default function TearSheetPrint({ project, items }: Props) {
               className="ts-photo"
               src={safeImageUrl(it.imageUrl)}
               alt={it.name}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
-              }}
+              onError={onImgError}
             />
           </div>
 
@@ -49,6 +50,8 @@ export default function TearSheetPrint({ project, items }: Props) {
     </div>
   );
 }
+
+export default memo(TearSheetPrint);
 
 /**
  * Build the price line, e.g. "Price: $7,020 + Fabric + Freight". Upholstered

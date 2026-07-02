@@ -10,7 +10,7 @@ import {
 import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { normalizeFirmStyle } from "../types";
+import { withSafeStyle } from "../types";
 import type { Firm, Profile } from "../types";
 
 interface AuthState {
@@ -38,16 +38,6 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-
-/** The firm's `style` jsonb is member-writable and therefore untrusted —
- *  normalize it once here so every consumer gets a complete, safe shape. */
-function withSafeStyle(firm: Firm | null): Firm | null {
-  if (!firm) return null;
-  return {
-    ...firm,
-    style: firm.style == null ? null : normalizeFirmStyle(firm.style),
-  };
-}
 
 /**
  * Read auth params out of the URL once, at module load, before the Supabase

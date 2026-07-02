@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
+import { withSafeStyle } from "../types";
 
 // Platform-admin-only data operations. Every call here is also guarded by RLS
 // (is_platform_admin()), so a non-admin calling them would simply get nothing /
@@ -11,7 +12,8 @@ export async function fetchFirms(): Promise<Firm[]> {
     .select("*")
     .order("name", { ascending: true });
   if (error) throw error;
-  return data as Firm[];
+  // Same boundary rule as AuthProvider: never hand out an unnormalized style.
+  return (data as Firm[]).map((f) => withSafeStyle(f) as Firm);
 }
 
 export async function fetchProfiles(): Promise<Profile[]> {
@@ -30,7 +32,7 @@ export async function createFirm(name: string): Promise<Firm> {
     .select("*")
     .single();
   if (error) throw error;
-  return data as Firm;
+  return withSafeStyle(data as Firm) as Firm;
 }
 
 export interface FirmPatch {
@@ -48,7 +50,7 @@ export async function updateFirm(id: string, patch: FirmPatch): Promise<Firm> {
     .select("*")
     .single();
   if (error) throw error;
-  return data as Firm;
+  return withSafeStyle(data as Firm) as Firm;
 }
 
 export async function deleteFirm(id: string): Promise<void> {

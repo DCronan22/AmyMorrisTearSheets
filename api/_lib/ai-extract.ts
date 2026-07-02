@@ -9,11 +9,11 @@
 //   - prompt caching on the stable system + tool prefix
 //   - NEVER send firm/client PII — inputs here are vendor product pages/images only
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import type { ExtractedFields } from "./extract-core.js";
+import { MODEL, getClient, cleanText, systemBlocks } from "./anthropic.js";
+import type { ImageMediaType } from "./anthropic.js";
 
-// Haiku is the deliberate, cost-driven choice for field extraction.
-const MODEL = "claude-haiku-4-5";
 const MAX_TOKENS = 600; // output is a small JSON object
 const MAX_TEXT_CHARS = 8000; // hard cap on page text sent to the model
 
@@ -61,61 +61,31 @@ const RECORD_TOOL: Anthropic.Tool = {
   },
 };
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("AI extraction is not configured on the server.");
-  client ??= new Anthropic({ apiKey: key });
-  return client;
-}
-
-/** True when the server has an Anthropic key configured. */
-export function aiExtractAvailable(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
-}
-
-// A model can occasionally leak its own tool-call delimiters (e.g.
-// "<parameter name=...>", "</antml...parameter>") as literal text inside a
-// string value. Strict tool use guarantees JSON shape, not clean string
-// contents. Legitimate product specs never contain tag markup, so cut the
-// value at the first tag-like fragment ("<" + optional "/" + a letter) and trim.
-function cleanText(v: unknown): string | undefined {
-  if (typeof v !== "string") return undefined;
-  const s = v.split(/<\s*\/?\s*[A-Za-z]/)[0].trim();
-  return s ? s : undefined;
-}
-
 function blocksToFields(message: Anthropic.Message): ExtractedFields {
   for (const block of message.content) {
     if (block.type === "tool_use" && block.name === "record_product") {
       const raw = block.input as Record<string, unknown>;
-      const str = cleanText;
       const price =
         typeof raw.price === "number" && Number.isFinite(raw.price)
           ? raw.price
           : null;
       return {
-        name: str(raw.name),
-        vendor: str(raw.vendor),
-        collection: str(raw.collection),
-        category: str(raw.category),
-        sku: str(raw.sku),
+        name: cleanText(raw.name),
+        vendor: cleanText(raw.vendor),
+        collection: cleanText(raw.collection),
+        category: cleanText(raw.category),
+        sku: cleanText(raw.sku),
         price,
-        dimensions: str(raw.dimensions),
-        material: str(raw.material),
-        color: str(raw.color),
+        dimensions: cleanText(raw.dimensions),
+        material: cleanText(raw.material),
+        color: cleanText(raw.color),
       };
     }
   }
   return {};
 }
 
-// Stable system block carries a cache breakpoint; the tool list is deterministic.
-// (Prefix may be below Haiku's 4K cache minimum, in which case caching is a no-op
-//  — harmless, and it kicks in for free if the prompt grows.)
-const SYSTEM_BLOCKS: Anthropic.TextBlockParam[] = [
-  { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-];
+const SYSTEM_BLOCKS = systemBlocks(SYSTEM_PROMPT);
 
 /** Extract fields from raw product-page text (fallback path). */
 export async function aiExtractFromText(text: string): Promise<ExtractedFields> {
@@ -139,7 +109,7 @@ export async function aiExtractFromText(text: string): Promise<ExtractedFields> 
 /** Extract fields from a product image / screenshot (base64, no data: prefix). */
 export async function aiExtractFromImage(
   base64: string,
-  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  mediaType: ImageMediaType
 ): Promise<ExtractedFields> {
   const message = await getClient().messages.create({
     model: MODEL,

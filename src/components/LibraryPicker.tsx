@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { LibraryItem } from "../types";
-import { distinct, filterCatalog } from "../util";
+import { toggledSet } from "../util";
 import ItemCard from "./ItemCard";
+import CatalogFilterBar from "./CatalogFilterBar";
+import { useCatalogFilter } from "./useCatalogFilter";
 
 interface Props {
   library: LibraryItem[];
@@ -26,28 +28,12 @@ export default function LibraryPicker({
   onClose,
 }: Props) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [collection, setCollection] = useState("");
-  const [category, setCategory] = useState("");
+  const { filter, setFilter, filtered } = useCatalogFilter(library);
 
-  const vendors = distinct(library, "vendor");
-  const collections = distinct(library, "collection");
-  const categories = distinct(library, "category");
-
-  const filtered = useMemo(
-    () => filterCatalog(library, { search, vendor, collection, category }),
-    [library, search, vendor, collection, category]
+  const toggle = useCallback(
+    (id: string) => setPicked((prev) => toggledSet(prev, id)),
+    []
   );
-
-  function toggle(id: string) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   function confirm() {
     const chosen = library.filter((li) => picked.has(li.id));
@@ -64,41 +50,12 @@ export default function LibraryPicker({
           </button>
         </header>
 
-        <section className="filters">
-          <input
-            className="search"
-            placeholder="Search the database…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select value={vendor} onChange={(e) => setVendor(e.target.value)}>
-            <option value="">All vendors</option>
-            {vendors.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-          <select
-            value={collection}
-            onChange={(e) => setCollection(e.target.value)}
-          >
-            <option value="">All collections</option>
-            {collections.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </section>
+        <CatalogFilterBar
+          items={library}
+          filter={filter}
+          onChange={setFilter}
+          placeholder="Search the database…"
+        />
 
         {error && <p className="status-err">{error}</p>}
 

@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback } from "react";
 import type { LibraryItem } from "../types";
-import { distinct, filterCatalog } from "../util";
 import ItemCard from "./ItemCard";
+import type { CardItem } from "./ItemCard";
+import CatalogFilterBar from "./CatalogFilterBar";
+import { hasActiveFilter, useCatalogFilter } from "./useCatalogFilter";
 
 interface Props {
   library: LibraryItem[];
@@ -21,7 +23,6 @@ interface Props {
   onAddSelectedToClient: () => void;
   /** Name of the active client project, for the "add to" button label. */
   activeClientName: string | null;
-  selectedCount: number;
   /** Show the vendor on each card (visual only). */
   showVendor?: boolean;
 }
@@ -44,24 +45,16 @@ export default function LibraryView({
   onDeleteSelected,
   onAddSelectedToClient,
   activeClientName,
-  selectedCount,
   showVendor = true,
 }: Props) {
-  const [search, setSearch] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [collection, setCollection] = useState("");
-  const [category, setCategory] = useState("");
-
-  const vendors = distinct(library, "vendor");
-  const collections = distinct(library, "collection");
-  const categories = distinct(library, "category");
-
-  const filtered = useMemo(
-    () => filterCatalog(library, { search, vendor, collection, category }),
-    [library, search, vendor, collection, category]
+  const { filter, setFilter, filtered } = useCatalogFilter(library);
+  const hasFilter = hasActiveFilter(filter);
+  const selectedCount = selected.size;
+  // Stable edit handler so the memoized cards can skip re-renders.
+  const handleEdit = useCallback(
+    (item: CardItem) => onEdit(item as LibraryItem),
+    [onEdit]
   );
-
-  const hasFilter = Boolean(search || vendor || collection || category);
 
   return (
     <div className="library">
@@ -125,57 +118,16 @@ export default function LibraryView({
         </div>
       </section>
 
-      <section className="filters">
-        <input
-          className="search"
-          placeholder="Search the database…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select value={vendor} onChange={(e) => setVendor(e.target.value)}>
-          <option value="">All vendors</option>
-          {vendors.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          value={collection}
-          onChange={(e) => setCollection(e.target.value)}
-        >
-          <option value="">All collections</option>
-          {collections.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        {hasFilter && (
-          <button
-            className="btn ghost small"
-            onClick={() => {
-              setSearch("");
-              setVendor("");
-              setCollection("");
-              setCategory("");
-            }}
-          >
-            Clear
-          </button>
-        )}
+      <CatalogFilterBar
+        items={library}
+        filter={filter}
+        onChange={setFilter}
+        placeholder="Search the database…"
+      >
         <span className="muted small filter-count">
           {filtered.length} of {library.length}
         </span>
-      </section>
+      </CatalogFilterBar>
 
       {error && <p className="status-err">{error}</p>}
 
@@ -205,7 +157,7 @@ export default function LibraryView({
                 selected={selected.has(li.id)}
                 showVendor={showVendor}
                 onToggleSelect={onToggleSelect}
-                onEdit={(item) => onEdit(item as LibraryItem)}
+                onEdit={handleEdit}
                 onDelete={onDelete}
               />
             ))}

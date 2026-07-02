@@ -175,6 +175,16 @@ export function normalizeFirmStyle(raw: unknown): FirmStyle {
   };
 }
 
+/** The firm's `style` jsonb is member-writable and therefore untrusted —
+ *  normalize it at every firm-fetch boundary so consumers get a safe shape. */
+export function withSafeStyle(firm: Firm | null): Firm | null {
+  if (!firm) return null;
+  return {
+    ...firm,
+    style: firm.style == null ? null : normalizeFirmStyle(firm.style),
+  };
+}
+
 /** A subscribing design company (tenant). */
 export interface Firm {
   id: string;
@@ -236,6 +246,44 @@ export function emptyItem(): Item {
     productUrl: "",
     upholstered: true,
   };
+}
+
+/**
+ * Coerce untrusted item data into a complete, well-typed Item — the sibling of
+ * normalizeFirmStyle for the items jsonb. Sources: project rows written by any
+ * firm member (possibly by older app versions) and backup .json files (possibly
+ * hand-edited). Wrong-typed fields fall back to blank-item defaults; unknown
+ * fields are dropped. `keepId` preserves a valid existing id (the DB load
+ * boundary); without it a fresh id is generated (backup restore, so restored
+ * copies never collide).
+ */
+export function sanitizeItem(raw: unknown, opts?: { keepId?: boolean }): Item {
+  const item = emptyItem();
+  if (!raw || typeof raw !== "object") return item;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  if (opts?.keepId && typeof r.id === "string" && r.id) item.id = r.id;
+  item.name = str(r.name);
+  item.vendor = str(r.vendor);
+  item.collection = str(r.collection);
+  item.category = str(r.category);
+  item.room = str(r.room);
+  item.sku = str(r.sku);
+  item.price =
+    typeof r.price === "number" && Number.isFinite(r.price) ? r.price : null;
+  item.quantity =
+    typeof r.quantity === "number" && Number.isFinite(r.quantity) && r.quantity >= 1
+      ? Math.floor(r.quantity)
+      : 1;
+  item.dimensions = str(r.dimensions);
+  item.material = str(r.material);
+  item.color = str(r.color);
+  item.leadTime = str(r.leadTime);
+  item.notes = str(r.notes);
+  item.imageUrl = str(r.imageUrl);
+  item.productUrl = str(r.productUrl);
+  item.upholstered = typeof r.upholstered === "boolean" ? r.upholstered : true;
+  return item;
 }
 
 /**
@@ -304,27 +352,6 @@ export function libraryToItem(li: LibraryItem): Item {
     imageUrl: li.imageUrl,
     productUrl: li.productUrl,
     upholstered: li.upholstered ?? true,
-  };
-}
-
-/** Build a blank library item with a fresh id. */
-export function emptyLibraryItem(): LibraryItem {
-  return {
-    id: newId(),
-    name: "",
-    vendor: "",
-    collection: "",
-    category: "",
-    sku: "",
-    price: null,
-    dimensions: "",
-    material: "",
-    color: "",
-    leadTime: "",
-    notes: "",
-    imageUrl: "",
-    productUrl: "",
-    upholstered: true,
   };
 }
 

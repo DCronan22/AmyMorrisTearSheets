@@ -1,13 +1,10 @@
 // Shared extraction orchestrator, used by both the Vercel serverless handler
 // (api/extract.ts) and the local Vite dev middleware. Auth + rate limiting are
 // handled by the callers before this runs.
-import { extractFromUrl, fetchReadableText } from "./extract-core.js";
+import { extractFromUrl, htmlToReadableText } from "./extract-core.js";
 import type { ExtractedFields, ExtractResult } from "./extract-core.js";
-import {
-  aiExtractAvailable,
-  aiExtractFromImage,
-  aiExtractFromText,
-} from "./ai-extract.js";
+import { aiExtractFromImage, aiExtractFromText } from "./ai-extract.js";
+import { aiAvailable, parseImageDataUrl } from "./anthropic.js";
 
 export interface ExtractRequest {
   url?: string;
@@ -17,7 +14,6 @@ export interface ExtractRequest {
 }
 
 const MAX_IMAGE_BYTES = 4_000_000; // ~4 MB decoded
-const IMAGE_RE = /^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
 
 function hasData(f: ExtractedFields): boolean {
   return Object.entries(f).some(
@@ -65,20 +61,15 @@ export async function runExtraction(
 ): Promise<{ status: number; payload: ExtractResult | { error: string } }> {
   // --- Image upload → AI vision ---
   if (body.image) {
-    if (!aiExtractAvailable()) {
+    if (!aiAvailable()) {
       return { status: 503, payload: { error: "Image extraction isn't enabled on this server." } };
     }
-    const m = IMAGE_RE.exec(body.image.trim());
-    if (!m) {
-      return { status: 400, payload: { error: "Unsupported image format." } };
-    }
-    const mediaType = m[1] as "image/png" | "image/jpeg" | "image/webp" | "image/gif";
-    const base64 = m[2];
-    if ((base64.length * 3) / 4 > MAX_IMAGE_BYTES) {
-      return { status: 413, payload: { error: "Image is too large (max ~4 MB)." } };
+    const img = parseImageDataUrl(body.image, MAX_IMAGE_BYTES);
+    if ("error" in img) {
+      return { status: img.status, payload: { error: img.error } };
     }
     try {
-      const fields = await aiExtractFromImage(base64, mediaType);
+      const fields = await aiExtractFromImage(img.base64, img.mediaType);
       return {
         status: 200,
         payload: {
@@ -95,22 +86,24 @@ export async function runExtraction(
   // --- URL → free structured data, optional AI fallback ---
   if (body.url) {
     let result: ExtractResult;
+    let html: string;
+    let finalUrl: string;
     try {
-      result = await extractFromUrl(body.url);
+      ({ result, html, finalUrl } = await extractFromUrl(body.url));
     } catch (e) {
       return { status: 400, payload: { error: e instanceof Error ? e.message : "Couldn't read that link." } };
     }
     // After free structured extraction, optionally have the AI fill blanks
     // when several key fields are still missing. The structured value always
-    // wins; the AI only fills fields that are empty.
+    // wins; the AI only fills fields that are empty. Reuses the HTML from the
+    // structured pass — no second fetch of the same page.
     if (
       missingKeyCount(result.fields) >= 3 &&
       body.aiFallback &&
-      aiExtractAvailable()
+      aiAvailable()
     ) {
       try {
-        const { text, finalUrl } = await fetchReadableText(body.url);
-        const aiFields = await aiExtractFromText(text);
+        const aiFields = await aiExtractFromText(htmlToReadableText(html));
         const merged = fillBlanks(result.fields, aiFields);
         merged.productUrl = result.fields.productUrl ?? finalUrl;
         return {
@@ -132,7 +125,7 @@ export async function runExtraction(
 
   // --- Raw text → AI ---
   if (body.text) {
-    if (!aiExtractAvailable()) {
+    if (!aiAvailable()) {
       return { status: 503, payload: { error: "Text extraction isn't enabled on this server." } };
     }
     try {

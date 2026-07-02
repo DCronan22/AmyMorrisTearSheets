@@ -1,3 +1,4 @@
+import type { SyntheticEvent } from "react";
 import type { Item } from "./types";
 
 /** Format a price as USD; blank when null. */
@@ -43,13 +44,21 @@ export interface Filterable {
   color: string;
 }
 
-/** Filter a catalog (project items or library items) by search + dropdowns. */
-export function filterCatalog<T extends Filterable>(
+/** Filter a catalog (project items or library items) by search + dropdowns.
+ *  `room` only applies to items that have rooms (project items). */
+export function filterCatalog<T extends Filterable & { room?: string }>(
   items: T[],
-  f: { search: string; vendor: string; collection: string; category: string }
+  f: {
+    search: string;
+    vendor: string;
+    collection: string;
+    category: string;
+    room?: string;
+  }
 ): T[] {
   const q = f.search.trim().toLowerCase();
   return items.filter((it) => {
+    if (f.room && it.room !== f.room) return false;
     if (f.vendor && it.vendor !== f.vendor) return false;
     if (f.collection && it.collection !== f.collection) return false;
     if (f.category && it.category !== f.category) return false;
@@ -60,6 +69,19 @@ export function filterCatalog<T extends Filterable>(
     }
     return true;
   });
+}
+
+/** New Set with `id` toggled — the standard "toggle selection" state update. */
+export function toggledSet(prev: Set<string>, id: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+/** Shared <img onError> fallback: swap a broken image for the placeholder. */
+export function onImgError(e: SyntheticEvent<HTMLImageElement>): void {
+  (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
 }
 
 /**

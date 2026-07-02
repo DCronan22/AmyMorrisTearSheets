@@ -5,7 +5,9 @@
 // Same cost discipline as ai-extract.ts: Haiku, forced tool use → small JSON,
 // low max_tokens, prompt caching on the stable system prefix.
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { MODEL, getClient, cleanText, systemBlocks } from "./anthropic.js";
+import type { ImageMediaType } from "./anthropic.js";
 
 // Mirrors the client/src DetectedStyle (api/ can't import from src). All fields
 // optional — the caller merges only what comes back over the firm's defaults.
@@ -21,7 +23,6 @@ export interface DetectedStyle {
   footerText?: string;
 }
 
-const MODEL = "claude-haiku-4-5";
 const MAX_TOKENS = 400;
 
 const SYSTEM_PROMPT =
@@ -61,22 +62,7 @@ const RECORD_TOOL: Anthropic.Tool = {
   },
 };
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("AI style detection is not configured on the server.");
-  client ??= new Anthropic({ apiKey: key });
-  return client;
-}
-
-/** True when the server has an Anthropic key configured. */
-export function detectStyleAvailable(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
-}
-
-const SYSTEM_BLOCKS: Anthropic.TextBlockParam[] = [
-  { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-];
+const SYSTEM_BLOCKS = systemBlocks(SYSTEM_PROMPT);
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -88,13 +74,6 @@ function blocksToStyle(message: Anthropic.Message): DetectedStyle {
       const hex = (v: unknown) =>
         typeof v === "string" && HEX_RE.test(v.trim()) ? v.trim().toLowerCase() : undefined;
       const bool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-      // Cut any leaked tool-call / tag markup out of free-text values; footer
-      // text never legitimately contains a "<tag" fragment. (See ai-extract.ts.)
-      const str = (v: unknown) => {
-        if (typeof v !== "string") return undefined;
-        const s = v.split(/<\s*\/?\s*[A-Za-z]/)[0].trim();
-        return s ? s : undefined;
-      };
 
       out.accentColor = hex(raw.accentColor);
       out.textColor = hex(raw.textColor);
@@ -110,7 +89,7 @@ function blocksToStyle(message: Anthropic.Message): DetectedStyle {
       out.showPrice = bool(raw.showPrice);
       out.showSku = bool(raw.showSku);
       out.showDimensions = bool(raw.showDimensions);
-      out.footerText = str(raw.footerText);
+      out.footerText = cleanText(raw.footerText);
 
       // Drop undefined keys so the merge on the client only applies real hits.
       return Object.fromEntries(
@@ -124,7 +103,7 @@ function blocksToStyle(message: Anthropic.Message): DetectedStyle {
 /** Detect a style from a sample-sheet image (base64, no data: prefix). */
 export async function detectStyleFromImage(
   base64: string,
-  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  mediaType: ImageMediaType
 ): Promise<DetectedStyle> {
   const message = await getClient().messages.create({
     model: MODEL,

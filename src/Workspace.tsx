@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import "./App.css";
-import type { AppData, Firm, Item, LibraryItem, Project } from "./types";
+import type { Firm, Item, LibraryItem, Project } from "./types";
 import {
   emptyItem,
   emptyProject,
@@ -23,12 +23,15 @@ import {
 } from "./data/projects";
 import {
   fetchLibrary,
+  fetchLibraryKeys,
   createLibraryItem,
   createLibraryItems,
   saveLibraryItem,
   deleteLibraryItem,
 } from "./data/library";
-import { distinct, projectTotal, formatPrice } from "./util";
+import { distinct, projectTotal, formatPrice, toggledSet } from "./util";
+import CatalogFilterBar from "./components/CatalogFilterBar";
+import { useCatalogFilter } from "./components/useCatalogFilter";
 import RoomGroupedGallery from "./components/RoomGroupedGallery";
 import LibraryView from "./components/LibraryView";
 import LibraryPicker from "./components/LibraryPicker";
@@ -44,6 +47,10 @@ interface Props {
   onOpenAdmin: () => void;
   onSignOut: () => void;
 }
+
+// Stable stand-in while no project is active, so hooks keyed on the items
+// array don't churn.
+const EMPTY_ITEMS: Item[] = [];
 
 /** The authenticated tear-sheet workspace for a single firm. */
 export default function Workspace({
@@ -62,11 +69,6 @@ export default function Workspace({
   const [editing, setEditing] = useState<Item | null>(null);
   const [importing, setImporting] = useState(false);
   const [showIndex, setShowIndex] = useState<number | null>(null);
-  const [roomFilter, setRoomFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [vendorFilter, setVendorFilter] = useState("");
-  const [collectionFilter, setCollectionFilter] = useState("");
-  const [search, setSearch] = useState("");
   const [editingHeader, setEditingHeader] = useState(false);
   const [showStyle, setShowStyle] = useState(false);
   // Optional first-run prompt: shown once per firm that has no style yet, and
@@ -106,9 +108,6 @@ export default function Workspace({
   // The set of items to render in the print layout (selected subset or all).
   const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
   const restoreInput = useRef<HTMLInputElement>(null);
-  // Monotonic save counter so a slow, stale save response can never overwrite
-  // the state produced by a newer save (out-of-order network replies).
-  const saveSeq = useRef(0);
 
   // Brand the browser tab for whichever firm is signed in; restore the generic
   // product name when leaving the workspace (sign-out / admin panel).
@@ -144,22 +143,16 @@ export default function Workspace({
     [projects, activeProjectId]
   );
 
-  const filtered = useMemo(() => {
-    if (!project) return [];
-    const q = search.trim().toLowerCase();
-    return project.items.filter((it) => {
-      if (roomFilter && it.room !== roomFilter) return false;
-      if (categoryFilter && it.category !== categoryFilter) return false;
-      if (vendorFilter && it.vendor !== vendorFilter) return false;
-      if (collectionFilter && it.collection !== collectionFilter) return false;
-      if (q) {
-        const hay =
-          `${it.name} ${it.vendor} ${it.collection} ${it.sku} ${it.material} ${it.color}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [project, roomFilter, categoryFilter, vendorFilter, collectionFilter, search]);
+  // Search + dropdown filtering, shared with the database views.
+  const { filter, setFilter, filtered } = useCatalogFilter(
+    project?.items ?? EMPTY_ITEMS
+  );
+  // Existing room names — memoized so the memoized gallery cards (which take
+  // this as a prop) don't re-render on every keystroke.
+  const rooms = useMemo(
+    () => (project ? distinct(project.items, "room") : []),
+    [project]
+  );
 
   // --- Selection ------------------------------------------------------------
 
@@ -176,14 +169,10 @@ export default function Workspace({
   const allFilteredSelected =
     filtered.length > 0 && filteredSelectedCount === filtered.length;
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const toggleSelect = useCallback(
+    (id: string) => setSelectedIds((prev) => toggledSet(prev, id)),
+    []
+  );
 
   function selectAllFiltered() {
     setSelectedIds((prev) => {
@@ -218,30 +207,31 @@ export default function Workspace({
 
   // --- Persistence ----------------------------------------------------------
 
-  async function persist(p: Project) {
+  // Save to the database. State was already updated optimistically by
+  // applyProjectChange, and the save echoes nothing back, so there's no
+  // write-back on success (which also means out-of-order replies are harmless).
+  const persist = useCallback(async (p: Project) => {
     setSaveError(null);
-    const seq = ++saveSeq.current;
     try {
-      const saved = await saveProject(p);
-      // Adopt the stored row (server-normalized date, updated_at) into state —
-      // but only if no newer save started while this one was in flight.
-      if (seq !== saveSeq.current) return;
-      setProjects((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      await saveProject(p);
     } catch (e) {
       setSaveError(
         e instanceof Error ? e.message : "Changes could not be saved."
       );
     }
-  }
+  }, []);
 
   // Apply a change to the active project: update local state immediately, then
   // persist to the database.
-  function applyProjectChange(mut: (p: Project) => Project) {
-    if (!project) return;
-    const updated = mut(project);
-    setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)));
-    void persist(updated);
-  }
+  const applyProjectChange = useCallback(
+    (mut: (p: Project) => Project) => {
+      if (!project) return;
+      const updated = mut(project);
+      setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)));
+      void persist(updated);
+    },
+    [project, persist]
+  );
 
   function saveItem(item: Item) {
     const isNew = project ? !project.items.some((i) => i.id === item.id) : false;
@@ -346,14 +336,10 @@ export default function Workspace({
     void ensureLibrary();
   }
 
-  function toggleLibrarySelect(id: string) {
-    setLibrarySelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const toggleLibrarySelect = useCallback(
+    (id: string) => setLibrarySelected((prev) => toggledSet(prev, id)),
+    []
+  );
 
   // Save a library draft (the ItemEditor works on an Item; convert back). New
   // entries are inserted (DB assigns the id); existing ones are updated.
@@ -468,14 +454,10 @@ export default function Workspace({
     const named = items.filter((it) => it.name.trim());
     if (!named.length) return;
     try {
-      // Dedup against the current library, loading it once if needed.
-      let lib = library;
-      if (!libraryLoaded) {
-        lib = await fetchLibrary(firm.id);
-        setLibrary(lib);
-        setLibraryLoaded(true);
-      }
-      const seen = new Set(lib.map(catalogKey));
+      // Dedup against the current library. When it isn't loaded yet, fetch just
+      // the name/vendor/sku keys — not every row with its embedded images.
+      const keys = libraryLoaded ? library : await fetchLibraryKeys(firm.id);
+      const seen = new Set(keys.map(catalogKey));
       const toAdd: ReturnType<typeof itemToLibrary>[] = [];
       for (const it of named) {
         const k = catalogKey(it);
@@ -485,7 +467,7 @@ export default function Workspace({
       }
       if (!toAdd.length) return;
       const saved = await createLibraryItems(firm.id, toAdd);
-      setLibrary((ls) => [...saved, ...ls]);
+      if (libraryLoaded) setLibrary((ls) => [...saved, ...ls]);
     } catch {
       // Mirroring is best-effort; the client item is already saved.
     }
@@ -529,12 +511,25 @@ export default function Workspace({
   }
 
   // Quick room assignment from the grouped client view.
-  function setItemRoom(item: Item, room: string) {
-    applyProjectChange((p) => ({
-      ...p,
-      items: p.items.map((i) => (i.id === item.id ? { ...i, room } : i)),
-    }));
-  }
+  const setItemRoom = useCallback(
+    (item: Item, room: string) => {
+      applyProjectChange((p) => ({
+        ...p,
+        items: p.items.map((i) => (i.id === item.id ? { ...i, room } : i)),
+      }));
+    },
+    [applyProjectChange]
+  );
+
+  // Open the slideshow at the clicked item's position in the full project.
+  const presentItem = useCallback(
+    (item: Item) => {
+      if (!project) return;
+      const realIndex = project.items.findIndex((x) => x.id === item.id);
+      setShowIndex(realIndex >= 0 ? realIndex : 0);
+    },
+    [project]
+  );
 
   async function createProject() {
     setSaveError(null);
@@ -585,10 +580,10 @@ export default function Workspace({
         confirmLabel: "Restore",
       });
       if (!ok) return;
-      const stored: Project[] = [];
-      for (const p of restored) {
-        stored.push(await dbCreateProject(firm.id, p));
-      }
+      // Independent inserts — create them in parallel.
+      const stored = await Promise.all(
+        restored.map((p) => dbCreateProject(firm.id, p))
+      );
       setProjects((ps) => [...stored, ...ps]);
       setActiveProjectId(stored[0].id);
     } catch (e) {
@@ -710,16 +705,7 @@ export default function Workspace({
     );
   }
 
-  const rooms = distinct(project.items, "room");
-  const categories = distinct(project.items, "category");
-  const vendors = distinct(project.items, "vendor");
-  const collections = distinct(project.items, "collection");
   const total = projectTotal(project.items);
-  const backupData: AppData = {
-    version: 1,
-    projects,
-    activeProjectId: project.id,
-  };
 
   return (
     <>
@@ -831,7 +817,15 @@ export default function Workspace({
                 <button onClick={toggleShowVendor}>
                   {showVendor ? "✓ " : ""}Show vendor on cards
                 </button>
-                <button onClick={() => exportProjectFile(backupData)}>
+                <button
+                  onClick={() =>
+                    exportProjectFile({
+                      version: 1,
+                      projects,
+                      activeProjectId: project.id,
+                    })
+                  }
+                >
                   Export backup (.json)
                 </button>
                 <button onClick={() => restoreInput.current?.click()}>
@@ -886,7 +880,6 @@ export default function Workspace({
             onDeleteSelected={removeLibrarySelected}
             onAddSelectedToClient={addLibrarySelectionToClient}
             activeClientName={project.name}
-            selectedCount={librarySelected.size}
             showVendor={showVendor}
           />
         ) : (
@@ -931,76 +924,16 @@ export default function Workspace({
           )}
         </section>
 
-        <section className="filters">
-          <input
-            className="search"
-            placeholder="Search items…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            value={vendorFilter}
-            onChange={(e) => setVendorFilter(e.target.value)}
-          >
-            <option value="">All vendors</option>
-            {vendors.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-          <select
-            value={collectionFilter}
-            onChange={(e) => setCollectionFilter(e.target.value)}
-          >
-            <option value="">All collections</option>
-            {collections.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}>
-            <option value="">All rooms</option>
-            {rooms.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          {(roomFilter ||
-            categoryFilter ||
-            vendorFilter ||
-            collectionFilter ||
-            search) && (
-            <button
-              className="btn ghost small"
-              onClick={() => {
-                setRoomFilter("");
-                setCategoryFilter("");
-                setVendorFilter("");
-                setCollectionFilter("");
-                setSearch("");
-              }}
-            >
-              Clear
-            </button>
-          )}
+        <CatalogFilterBar
+          items={project.items}
+          filter={filter}
+          onChange={setFilter}
+          rooms={rooms}
+        >
           <span className="muted small filter-count">
             {filtered.length} of {project.items.length}
           </span>
-        </section>
+        </CatalogFilterBar>
 
         <section className="selectbar">
           <button
@@ -1039,10 +972,7 @@ export default function Workspace({
             onToggleSelect={toggleSelect}
             onEdit={setEditing}
             onSetRoom={setItemRoom}
-            onPresent={(item) => {
-              const realIndex = project.items.findIndex((x) => x.id === item.id);
-              setShowIndex(realIndex >= 0 ? realIndex : 0);
-            }}
+            onPresent={presentItem}
           />
         </main>
         </>

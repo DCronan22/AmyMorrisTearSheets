@@ -461,25 +461,27 @@ export function parseProductHtml(html: string, finalUrl: string): ExtractResult 
   };
 }
 
-/** Public entry point: SSRF-guarded fetch of a product URL, then parse it. */
-export async function extractFromUrl(rawUrl: string): Promise<ExtractResult> {
+/**
+ * Public entry point: SSRF-guarded fetch of a product URL, then parse it.
+ * The raw HTML is returned alongside the result so the AI fallback can reuse
+ * it without a second fetch of the same page.
+ */
+export async function extractFromUrl(
+  rawUrl: string
+): Promise<{ result: ExtractResult; html: string; finalUrl: string }> {
   const { html, finalUrl } = await safeFetchHtml(rawUrl);
-  return parseProductHtml(html, finalUrl);
+  return { result: parseProductHtml(html, finalUrl), html, finalUrl };
 }
 
-/** SSRF-guarded fetch returning readable page text (for the AI fallback). */
-export async function fetchReadableText(
-  rawUrl: string
-): Promise<{ text: string; finalUrl: string }> {
-  const { html, finalUrl } = await safeFetchHtml(rawUrl);
+/** Strip already-fetched HTML down to readable text (for the AI fallback). */
+export function htmlToReadableText(html: string): string {
   const root = parse(html);
   root.querySelectorAll("script,style,noscript,svg,template").forEach((e) =>
     e.remove()
   );
   const body = root.querySelector("body") ?? root;
-  const text = body.innerText
+  return body.innerText
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return { text, finalUrl };
 }

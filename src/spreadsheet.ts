@@ -102,7 +102,8 @@ const PRICE_PLACEHOLDERS = new Set([
   "?",
 ]);
 
-function parsePrice(raw: unknown): number | null {
+/** Shared price parser (also used by the PowerPoint importer). */
+export function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
   const s = String(raw).trim();

@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { Item, Project } from "../types";
+import { sanitizeItem } from "../types";
 
 // The app's UI works on the camelCase `Project` shape. The database stores
 // snake_case columns with items as a jsonb array. These helpers translate
@@ -27,7 +28,11 @@ function rowToProject(row: ProjectRow): Project {
     date: row.date ?? "",
     logoUrl: row.logo_url ?? "",
     notes: row.notes ?? "",
-    items: Array.isArray(row.items) ? row.items : [],
+    // The items jsonb is member-written (possibly by older app versions), so
+    // normalize each item at this boundary — same rule as the firm style.
+    items: Array.isArray(row.items)
+      ? row.items.map((it) => sanitizeItem(it, { keepId: true }))
+      : [],
   };
 }
 
@@ -70,25 +75,29 @@ export async function createProject(
   const { data, error } = await supabase
     .from("projects")
     .insert({ ...row, firm_id: firmId })
-    .select("*")
+    // Select the header back (the DB generates the id) but NOT the items blob —
+    // echoing it would re-download every embedded image we just uploaded.
+    .select("id,firm_id,name,client,location,date,logo_url,notes")
     .single();
   if (error) throw error;
-  return rowToProject(data as ProjectRow);
+  return rowToProject({ ...(data as ProjectRow), items: p.items });
 }
 
 /** Save the full project (header + items). Ownership is enforced by RLS. */
-export async function saveProject(p: Project): Promise<Project> {
+export async function saveProject(p: Project): Promise<void> {
+  // Select only the id back: it confirms the row still exists (RLS/deletion),
+  // and the full-row echo held nothing the app uses — just a multi-MB
+  // re-download of every embedded item image after each edit.
   const { data, error } = await supabase
     .from("projects")
     .update(projectToRow(p))
     .eq("id", p.id)
-    .select("*")
+    .select("id")
     .maybeSingle();
   if (error) throw error;
   if (!data) {
     throw new Error("This project is no longer available (it may have been deleted).");
   }
-  return rowToProject(data as ProjectRow);
 }
 
 /** Permanently delete a project. */

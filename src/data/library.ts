@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { LibraryItem } from "../types";
+import { itemToLibrary, sanitizeItem } from "../types";
 
 // The firm's master tear-sheet library. Each row stores one LibraryItem as a
 // jsonb `data` blob (mirroring how projects store their items jsonb). The row's
@@ -14,44 +15,18 @@ interface LibraryRow {
 }
 
 function rowToLibrary(row: LibraryRow): LibraryItem {
-  const d = (row.data ?? {}) as Partial<LibraryItem>;
-  return {
-    id: row.id,
-    name: d.name ?? "",
-    vendor: d.vendor ?? "",
-    collection: d.collection ?? "",
-    category: d.category ?? "",
-    sku: d.sku ?? "",
-    price: typeof d.price === "number" ? d.price : null,
-    dimensions: d.dimensions ?? "",
-    material: d.material ?? "",
-    color: d.color ?? "",
-    leadTime: d.leadTime ?? "",
-    notes: d.notes ?? "",
-    imageUrl: d.imageUrl ?? "",
-    productUrl: d.productUrl ?? "",
-    upholstered: d.upholstered,
-  };
+  // The data blob is member-written jsonb — run it through the shared item
+  // sanitizer, then keep the row's own uuid as the id.
+  return { id: row.id, ...itemToLibrary(sanitizeItem(row.data)) };
 }
 
 // The jsonb payload — everything except the id, which lives in its own column.
+// (Strip a stray runtime id defensively; the type alone doesn't guarantee the
+// object has none, and extra keys would be stored verbatim.)
 function libraryToData(li: Omit<LibraryItem, "id">): Omit<LibraryItem, "id"> {
-  return {
-    name: li.name,
-    vendor: li.vendor,
-    collection: li.collection,
-    category: li.category,
-    sku: li.sku,
-    price: li.price,
-    dimensions: li.dimensions,
-    material: li.material,
-    color: li.color,
-    leadTime: li.leadTime,
-    notes: li.notes,
-    imageUrl: li.imageUrl,
-    productUrl: li.productUrl,
-    upholstered: li.upholstered,
-  };
+  const { id: _omit, ...data } = li as LibraryItem;
+  void _omit;
+  return data;
 }
 
 /** Load a firm's library, newest-updated first. */
@@ -63,6 +38,27 @@ export async function fetchLibrary(firmId: string): Promise<LibraryItem[]> {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return (data as LibraryRow[]).map(rowToLibrary);
+}
+
+/**
+ * Lean fetch of just the name/vendor/sku dedup keys — no jsonb blobs with
+ * embedded images. Used by mirror-to-library's "already in the library?" check.
+ */
+export async function fetchLibraryKeys(
+  firmId: string
+): Promise<{ name: string; vendor: string; sku: string }[]> {
+  const { data, error } = await supabase
+    .from("library_items")
+    .select("name:data->>name, vendor:data->>vendor, sku:data->>sku")
+    .eq("firm_id", firmId);
+  if (error) throw error;
+  return (
+    data as { name: string | null; vendor: string | null; sku: string | null }[]
+  ).map((r) => ({
+    name: r.name ?? "",
+    vendor: r.vendor ?? "",
+    sku: r.sku ?? "",
+  }));
 }
 
 /** Insert one library item for the firm. The DB generates the uuid. */

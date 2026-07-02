@@ -1,5 +1,5 @@
-import type { AppData, Item, Project } from "./types";
-import { emptyItem, emptyProject } from "./types";
+import type { AppData, Project } from "./types";
+import { emptyProject, sanitizeItem } from "./types";
 
 // File-download helpers. Persistence now lives in Supabase (see src/data/), so
 // these only handle the manual "Export backup (.json)" feature and the
@@ -14,37 +14,9 @@ export function exportProjectFile(data: AppData): void {
 }
 
 // A backup file is untrusted input (it may be hand-edited or from another
-// machine), so every field is type-checked and coerced before it gets near
-// the database. Unknown fields are dropped; wrong-typed fields fall back to
-// the blank-item defaults.
-function sanitizeItem(raw: unknown): Item {
-  const item = emptyItem();
-  if (!raw || typeof raw !== "object") return item;
-  const r = raw as Record<string, unknown>;
-  const str = (v: unknown) => (typeof v === "string" ? v : "");
-  item.name = str(r.name);
-  item.vendor = str(r.vendor);
-  item.collection = str(r.collection);
-  item.category = str(r.category);
-  item.room = str(r.room);
-  item.sku = str(r.sku);
-  item.price =
-    typeof r.price === "number" && Number.isFinite(r.price) ? r.price : null;
-  item.quantity =
-    typeof r.quantity === "number" && Number.isFinite(r.quantity) && r.quantity >= 1
-      ? Math.floor(r.quantity)
-      : 1;
-  item.dimensions = str(r.dimensions);
-  item.material = str(r.material);
-  item.color = str(r.color);
-  item.leadTime = str(r.leadTime);
-  item.notes = str(r.notes);
-  item.imageUrl = str(r.imageUrl);
-  item.productUrl = str(r.productUrl);
-  item.upholstered = typeof r.upholstered === "boolean" ? r.upholstered : true;
-  return item;
-}
-
+// machine), so every field is type-checked and coerced (via the shared
+// sanitizeItem, WITHOUT keepId — restored items get fresh ids) before it gets
+// near the database.
 function sanitizeProject(raw: unknown): Project {
   const p = emptyProject();
   if (!raw || typeof raw !== "object") return p;
@@ -57,7 +29,7 @@ function sanitizeProject(raw: unknown): Project {
   p.date = /^\d{4}-\d{2}-\d{2}$/.test(str(r.date)) ? str(r.date) : "";
   p.logoUrl = str(r.logoUrl);
   p.notes = str(r.notes);
-  p.items = Array.isArray(r.items) ? r.items.map(sanitizeItem) : [];
+  p.items = Array.isArray(r.items) ? r.items.map((it) => sanitizeItem(it)) : [];
   return p;
 }
 

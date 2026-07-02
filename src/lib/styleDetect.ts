@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { authedPostJson, apiErrorMessage } from "./api";
 import type { DetectedStyle } from "../types";
 
 export interface DetectStyleResult {
@@ -19,35 +19,16 @@ export interface DetectStyleResult {
 export async function detectStyleFromSample(
   image: string
 ): Promise<DetectStyleResult> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const res = await fetch("/api/detect-style", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ image }),
-  });
-
-  let json: unknown = {};
-  try {
-    json = await res.json();
-  } catch {
-    /* non-JSON error */
-  }
+  const { res, json } = await authedPostJson("/api/detect-style", { image });
 
   if (res.status === 503) {
-    const msg =
-      (json as { error?: string }).error ||
-      "AI style detection isn't enabled yet.";
+    const msg = apiErrorMessage(json, "AI style detection isn't enabled yet.");
     return { style: {}, disabled: true, warnings: [msg] };
   }
   if (!res.ok) {
-    const msg =
-      (json as { error?: string }).error ||
-      "Couldn't analyze that sample. Try another image.";
-    throw new Error(msg);
+    throw new Error(
+      apiErrorMessage(json, "Couldn't analyze that sample. Try another image.")
+    );
   }
   const body = json as { style?: DetectedStyle; warnings?: string[] };
   return {

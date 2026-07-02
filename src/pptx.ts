@@ -2,6 +2,7 @@ import { unzipSync } from "fflate";
 import type { Item } from "./types";
 import { emptyItem } from "./types";
 import { compressImageFile } from "./lib/extract";
+import { parsePrice } from "./spreadsheet";
 import type { ImportResult } from "./spreadsheet";
 
 /**
@@ -160,15 +161,10 @@ export function parseSlide(xml: string): ParsedSlide {
 /** Pull the number out of a price line like "$7,020 + Fabric + Freight". */
 function parsePriceLine(line: string): number | null {
   if (!line) return null;
-  // Drop "+ Fabric + Freight", then take the FIRST numeric token. Stripping all
-  // non-digits would concatenate a range or parenthetical ("$7,020-$9,000",
-  // "$1,200 (set of 2)") into a nonsense number (70209000, 12002); grabbing the
-  // first token yields the starting price, matching the spreadsheet importer.
-  const head = line.split("+")[0];
-  const m = head.match(/\d[\d,]*(?:\.\d+)?/);
-  if (!m) return null;
-  const n = parseFloat(m[0].replace(/,/g, ""));
-  return Number.isFinite(n) ? n : null;
+  // Drop "+ Fabric + Freight" first, then defer to the shared spreadsheet
+  // parser (first numeric token, so ranges/parentheticals don't concatenate
+  // into nonsense; placeholders like "TBD" become null).
+  return parsePrice(line.split("+")[0]);
 }
 
 /**

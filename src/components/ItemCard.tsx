@@ -1,15 +1,16 @@
+import { memo } from "react";
 import type { ReactNode } from "react";
 import type { Item, LibraryItem } from "../types";
 import {
   formatPrice,
   lineTotal,
-  PLACEHOLDER_IMG,
+  onImgError,
   safeImageUrl,
   safeLinkUrl,
 } from "../util";
 
 /** Anything with the product display fields — a project Item or a LibraryItem. */
-type CardItem = Item | LibraryItem;
+export type CardItem = Item | LibraryItem;
 
 interface Props {
   item: CardItem;
@@ -31,9 +32,10 @@ interface Props {
 /**
  * One product card — the shared building block for the client gallery, the
  * room-grouped client view, the library, and the library picker. Behavior is
- * driven entirely by which callbacks are passed.
+ * driven entirely by which callbacks are passed. Memoized: galleries can hold
+ * hundreds of cards, so a search keystroke shouldn't re-render them all.
  */
-export default function ItemCard({
+function ItemCard({
   item,
   selected = false,
   onToggleSelect,
@@ -76,9 +78,7 @@ export default function ItemCard({
           src={safeImageUrl(item.imageUrl)}
           alt={item.name}
           loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
-          }}
+          onError={onImgError}
         />
         {item.category && <span className="card-tag">{item.category}</span>}
       </div>
@@ -162,3 +162,5 @@ export default function ItemCard({
     </article>
   );
 }
+
+export default memo(ItemCard);
