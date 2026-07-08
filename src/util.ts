@@ -12,6 +12,19 @@ export function formatPrice(p: number | null): string {
   });
 }
 
+/**
+ * Tear-sheet price line, e.g. "Price: $7,020 + Fabric + Freight". Upholstered
+ * pieces get "+ Fabric + Freight"; everything else just "+ Freight" (matching
+ * the Cameron/Century chairs+beds vs. the Jasper console). Returns null when
+ * the item has no price, so the line is omitted entirely. Shared by the
+ * print/PDF view and the PowerPoint export.
+ */
+export function priceLine(it: Item): string | null {
+  if (it.price === null || it.price === undefined) return null;
+  const suffix = it.upholstered === false ? "+ Freight" : "+ Fabric + Freight";
+  return `Price: ${formatPrice(it.price)} ${suffix}`;
+}
+
 /** Extended price (unit price x quantity). */
 export function lineTotal(item: Item): number | null {
   if (item.price === null) return null;

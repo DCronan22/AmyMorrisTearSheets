@@ -15,6 +15,7 @@ import { useConfirm } from "./components/ConfirmProvider";
 import StyleEditor from "./branding/StyleEditor";
 import { exportProjectFile, parseBackupFile } from "./storage";
 import { exportItemsToSpreadsheet } from "./spreadsheet";
+import { exportItemsToPptx } from "./pptxExport";
 import {
   createProject as dbCreateProject,
   deleteProject as dbDeleteProject,
@@ -90,6 +91,8 @@ export default function Workspace({
   // Which destination an open ImportPanel feeds: the client or the library.
   const [importTarget, setImportTarget] = useState<"client" | "library">("client");
   const [flash, setFlash] = useState<string | null>(null);
+  // Guards against double-clicking the PowerPoint export while images fetch.
+  const [exportingPptx, setExportingPptx] = useState(false);
 
   const { applyFirm } = useAuth();
   const confirm = useConfirm();
@@ -203,6 +206,32 @@ export default function Workspace({
       // Fallback in case onafterprint never fires (some browsers/dialogs).
       setTimeout(reset, 1000);
     }, 0);
+  }
+
+  // Build and download the PowerPoint tear sheets (same layout as Print/PDF).
+  // Image fetching can take a moment, so flash progress + the outcome.
+  async function exportPowerPoint(items: Item[], name: string) {
+    if (items.length === 0 || exportingPptx) return;
+    setExportingPptx(true);
+    setSaveError(null);
+    flashMsg("Preparing PowerPoint…");
+    try {
+      const { missingImages } = await exportItemsToPptx(items, name);
+      flashMsg(
+        missingImages > 0
+          ? `PowerPoint exported — ${missingImages} image${
+              missingImages === 1 ? "" : "s"
+            } couldn't be embedded (vendor site blocked the download).`
+          : "PowerPoint exported."
+      );
+    } catch (e) {
+      setFlash(null);
+      setSaveError(
+        e instanceof Error ? e.message : "Could not export the PowerPoint file."
+      );
+    } finally {
+      setExportingPptx(false);
+    }
   }
 
   // --- Persistence ----------------------------------------------------------
@@ -813,6 +842,18 @@ export default function Workspace({
                   }
                 >
                   Export selected ({selectedCount}) (.xlsx)
+                </button>
+                <button
+                  disabled={project.items.length === 0 || exportingPptx}
+                  onClick={() => exportPowerPoint(project.items, project.name)}
+                >
+                  Export PowerPoint (.pptx)
+                </button>
+                <button
+                  disabled={selectedCount === 0 || exportingPptx}
+                  onClick={() => exportPowerPoint(selectedItems, project.name)}
+                >
+                  Export selected ({selectedCount}) (.pptx)
                 </button>
                 <button onClick={toggleShowVendor}>
                   {showVendor ? "✓ " : ""}Show vendor on cards

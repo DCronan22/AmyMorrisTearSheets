@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { Item, Project } from "../types";
-import { formatPrice, onImgError, safeImageUrl } from "../util";
+import { onImgError, priceLine, safeImageUrl } from "../util";
 import logoUrl from "../assets/amy-morris-logo.png";
 
 interface Props {
@@ -52,15 +52,3 @@ function TearSheetPrint({ project, items }: Props) {
 }
 
 export default memo(TearSheetPrint);
-
-/**
- * Build the price line, e.g. "Price: $7,020 + Fabric + Freight". Upholstered
- * pieces get "+ Fabric + Freight"; everything else just "+ Freight" (matching
- * the Cameron/Century chairs+beds vs. the Jasper console). Returns null when the
- * item has no price, so the line is omitted entirely.
- */
-function priceLine(it: Item): string | null {
-  if (it.price === null || it.price === undefined) return null;
-  const suffix = it.upholstered === false ? "+ Freight" : "+ Fabric + Freight";
-  return `Price: ${formatPrice(it.price)} ${suffix}`;
-}
