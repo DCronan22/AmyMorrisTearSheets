@@ -3,7 +3,11 @@ import type { FirmStyle } from "../types";
 import { FONT_STACKS } from "../types";
 import { safeLogoUrl } from "../util";
 
-/** A small, self-contained sample of how a tear sheet will look in this style. */
+/**
+ * A small live sample of an exported tear-sheet page in this style — a mini
+ * version of the real one-product-per-page layout (TearSheetPrint), so what
+ * the editor shows is what printing / PowerPoint actually produces.
+ */
 export default function StylePreview({
   style,
   firmName,
@@ -21,32 +25,24 @@ export default function StylePreview({
   } as CSSProperties;
 
   return (
-    <div className={`tsp tsp-${style.layout}`} style={vars}>
-      <div className="tsp-cover">
-        {logo && <img className="tsp-logo" src={logo} alt="" />}
-        <div className="tsp-firm">{style.coverTitle.trim() || firmName}</div>
-        <div className="tsp-project">Smith Residence</div>
-      </div>
+    <div className="tsp" style={vars}>
+      {logo ? (
+        <img className="tsp-logo" src={logo} alt="" />
+      ) : (
+        <div className="tsp-wordmark">{style.coverTitle.trim() || firmName}</div>
+      )}
       <div className="tsp-room">Living Room</div>
-      <div className="tsp-items">
-        {[0, 1].map((i) => (
-          <div className="tsp-item" key={i}>
-            <div className="tsp-img" />
-            <div className="tsp-info">
-              <div className="tsp-name">Lawson Sofa</div>
-              <div className="tsp-vendor">Vendor · Collection</div>
-              {style.showSku && <div className="tsp-spec">SKU · LS-204</div>}
-              {style.showDimensions && (
-                <div className="tsp-spec">84"W × 38"D × 31"H</div>
-              )}
-            </div>
-            {style.showPrice && <div className="tsp-price">$3,200</div>}
-          </div>
-        ))}
+      <div className="tsp-img" />
+      <div className="tsp-details">
+        <div>Lawson Sofa</div>
+        {style.showSku && <div>SKU: LS-204</div>}
+        {style.showDimensions && <div>Dimensions: 84"W × 38"D × 31"H</div>}
+        {style.showPrice && <div>Price: $3,200</div>}
+        <div>Lead Time: 8–10 weeks</div>
       </div>
-      <div className="tsp-foot">
-        {style.footerText.trim() || `${firmName} Tear Sheets`}
-      </div>
+      {style.footerText.trim() && (
+        <div className="tsp-foot">{style.footerText.trim()}</div>
+      )}
     </div>
   );
 }

@@ -69,6 +69,8 @@ export interface FirmStyle {
   accentColor: string; // hex — headings, room titles, rules
   textColor: string; // hex — body text
   font: FontPairing;
+  // Kept for stored-jsonb compatibility; the exports use one fixed
+  // one-product-per-page layout, so nothing reads this today.
   layout: TearSheetLayout;
   showPrice: boolean; // include prices on the sheet
   showSku: boolean; // include SKU / model rows
@@ -106,17 +108,6 @@ export const FONT_STACKS: Record<
     label: "Minimal",
   },
 };
-
-/** Layout options + descriptions for the style editor. */
-export const TEAR_SHEET_LAYOUTS: {
-  value: TearSheetLayout;
-  label: string;
-  hint: string;
-}[] = [
-  { value: "list", label: "List", hint: "Image left, specs right — dense & classic" },
-  { value: "grid", label: "Grid", hint: "Two cards per row — visual overview" },
-  { value: "spotlight", label: "Spotlight", hint: "One large item per page" },
-];
 
 /** A sensible default style, matching the app's original editorial look. */
 export function defaultFirmStyle(): FirmStyle {

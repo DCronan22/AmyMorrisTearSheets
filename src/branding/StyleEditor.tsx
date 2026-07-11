@@ -1,10 +1,6 @@
 import { useRef, useState } from "react";
 import type { Firm, FirmStyle } from "../types";
-import {
-  FONT_STACKS,
-  TEAR_SHEET_LAYOUTS,
-  defaultFirmStyle,
-} from "../types";
+import { FONT_STACKS, defaultFirmStyle } from "../types";
 import { saveFirmStyle } from "../data/firmStyle";
 import { compressImageFile, compressLogoFile } from "../lib/extract";
 import { detectStyleFromSample } from "../lib/styleDetect";
@@ -212,23 +208,6 @@ export default function StyleEditor({
                 </select>
               </label>
             </div>
-
-            <label className="style-field">
-              <span>Layout</span>
-              <div className="layout-choices">
-                {TEAR_SHEET_LAYOUTS.map((l) => (
-                  <button
-                    key={l.value}
-                    className={`layout-choice${draft.layout === l.value ? " active" : ""}`}
-                    onClick={() => set("layout", l.value)}
-                    type="button"
-                  >
-                    <strong>{l.label}</strong>
-                    <span className="muted small">{l.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </label>
 
             <fieldset className="style-toggles">
               <legend>Show on each item</legend>

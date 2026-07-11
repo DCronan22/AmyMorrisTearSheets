@@ -872,8 +872,7 @@ a.btn {
    Print / PDF layout
    ============================================================ */
 
-/* Hide print layouts on screen; show only when printing. */
-.print-root,
+/* Hide the print layout on screen; show only when printing. */
 .ts-print-root {
   display: none;
 }
@@ -885,26 +884,24 @@ a.btn {
   body {
     background: #fff;
   }
-  .print-root {
-    display: block;
-    color: #1c1c1c;
-    font-family: var(--sans);
-  }
 
-  /* Amy Morris tear sheets are a tall 9:16 portrait card, one per page. */
+  /* Tear sheets are a tall 9:16 portrait card, one per page. */
   @page {
     size: 7.5in 13.333in;
     margin: 0;
   }
 
   /* ============================================================
-     Amy Morris Interiors tear sheet — exact PowerPoint template
+     Tear sheet page — one product per page. Colors/fonts come
+     from the firm's style via vars set inline on .ts-print-root.
      ============================================================ */
   .ts-print-root {
     display: block;
-    color: #907c67;
+    color: var(--ts-text, #907c67);
+    font-family: var(--ts-body, var(--sans));
   }
   .ts-page {
+    position: relative;
     width: 7.5in;
     height: 13.333in;
     box-sizing: border-box;
@@ -930,10 +927,19 @@ a.btn {
     margin: 0 auto;
     flex: 0 0 auto;
   }
+  /* Text stand-in when the firm has no logo uploaded. */
+  .ts-wordmark {
+    margin: 0.2in 0 0;
+    font-family: var(--ts-head, var(--serif));
+    font-size: 26pt;
+    letter-spacing: 0.08em;
+    color: var(--ts-accent, #907c67);
+    flex: 0 0 auto;
+  }
   .ts-room {
     margin: 0.55in 0 0;
     font-size: 18pt;
-    color: #907c67;
+    color: var(--ts-accent, #907c67);
     flex: 0 0 auto;
   }
   .ts-photo-wrap {
@@ -960,209 +966,17 @@ a.btn {
   .ts-details p {
     margin: 0;
   }
-
-  .print-cover {
+  /* Optional firm tagline, sitting in the page's bottom padding. */
+  .ts-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.3in;
+    margin: 0;
     text-align: center;
-    padding: 1.4in 0 1in;
-    page-break-after: always;
-    border-bottom: none;
-  }
-  .print-logo {
-    max-height: 90px;
-    margin-bottom: 26px;
-  }
-  .print-firm {
-    font-size: 30pt;
-    letter-spacing: 0.04em;
-  }
-  .print-project {
-    font-size: 19pt;
-    color: #6d6047;
-    margin-top: 10px;
-    font-weight: 500;
-  }
-  .print-sub {
-    font-size: 12pt;
-    color: #555;
-    margin: 6px 0 2px;
-  }
-  .print-date {
-    font-size: 11pt;
-    color: #777;
-  }
-  .print-notes {
-    font-style: italic;
-    color: #555;
-    max-width: 5in;
-    margin: 18px auto 0;
-  }
-
-  .print-room {
-    page-break-before: auto;
-  }
-  .print-room-title {
-    font-size: 16pt;
-    color: #6d6047;
-    border-bottom: 1.5px solid #c9bfaa;
-    padding-bottom: 5px;
-    margin: 0 0 12px;
-  }
-
-  .print-item {
-    display: grid;
-    grid-template-columns: 2.2in 1fr auto;
-    gap: 18px;
-    padding: 14px 0;
-    border-bottom: 1px solid #e4ded4;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-  .print-item-img {
-    width: 2.2in;
-    height: 1.8in;
-    background: #f3f1ec;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .print-item-img img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .print-item-info h4 {
-    font-size: 14pt;
-    margin-bottom: 2px;
-  }
-  .print-vendor {
-    font-size: 9pt;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #888;
-    margin: 0 0 8px;
-  }
-  .print-specs {
-    border-collapse: collapse;
-    font-size: 9.5pt;
-  }
-  .print-specs th {
-    text-align: left;
-    color: #999;
-    font-weight: 500;
-    text-transform: uppercase;
+    font-size: 10pt;
     letter-spacing: 0.05em;
-    font-size: 8pt;
-    padding: 1px 14px 1px 0;
-    vertical-align: top;
-    white-space: nowrap;
-  }
-  .print-specs td {
-    padding: 1px 0;
-    color: #333;
-  }
-  .print-item-notes {
-    font-size: 9.5pt;
-    font-style: italic;
-    color: #555;
-    margin: 6px 0 0;
-  }
-  .print-item-price {
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    white-space: nowrap;
-  }
-  .print-price-main {
-    font-family: var(--serif);
-    font-size: 15pt;
-  }
-  .print-price-ext {
-    font-size: 9pt;
-    color: #888;
-  }
-
-  .print-foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 2px solid #6d6047;
-    font-size: 13pt;
-  }
-  .print-foot strong {
-    font-family: var(--serif);
-    font-size: 16pt;
-  }
-
-  .print-tagline {
-    text-align: center;
-    margin-top: 10px;
-    font-size: 9pt;
-    color: #888;
-    letter-spacing: 0.04em;
-  }
-
-  /* --- Firm style variables (set inline on .print-root) ----------------- */
-  .print-root {
-    color: var(--ts-text, #1c1c1c);
-    font-family: var(--ts-body, var(--sans));
-  }
-  .print-root .print-firm,
-  .print-root .print-project,
-  .print-root .print-room-title,
-  .print-root .print-price-main,
-  .print-root .print-foot strong {
-    font-family: var(--ts-head, var(--serif));
-  }
-  .print-root .print-firm,
-  .print-root .print-project,
-  .print-root .print-room-title {
-    color: var(--ts-accent, #6d6047);
-  }
-  .print-root .print-room-title {
-    border-bottom-color: var(--ts-accent, #c9bfaa);
-  }
-  .print-root .print-foot {
-    border-top-color: var(--ts-accent, #6d6047);
-  }
-
-  /* --- Layout: grid (two cards per row) --------------------------------- */
-  .print-root.layout-grid .print-room-items {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.3in;
-  }
-  .print-root.layout-grid .print-item {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid #e4ded4;
-    border-radius: 6px;
-  }
-  .print-root.layout-grid .print-item-img {
-    width: 100%;
-    height: 2in;
-  }
-  .print-root.layout-grid .print-item-price {
-    text-align: left;
-    flex-direction: row;
-    gap: 8px;
-  }
-
-  /* --- Layout: spotlight (one large item per page) ---------------------- */
-  .print-root.layout-spotlight .print-item {
-    grid-template-columns: 1fr;
-    gap: 14px;
-    border: none;
-    page-break-after: always;
-  }
-  .print-root.layout-spotlight .print-item-img {
-    width: 100%;
-    height: 5in;
-  }
-  .print-root.layout-spotlight .print-item-price {
-    text-align: left;
+    color: var(--ts-accent, #907c67);
   }
 
   /* Make sure backgrounds/colors print */
@@ -1566,28 +1380,6 @@ a.btn {
   font-size: 10px;
   color: var(--muted);
 }
-.layout-choices {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-}
-.layout-choice {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: left;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.layout-choice.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
-}
-.layout-choice strong {
-  font-size: 13px;
-}
 .style-toggles {
   display: flex;
   gap: 18px;
@@ -1615,107 +1407,61 @@ a.btn {
   flex-direction: column;
   gap: 6px;
 }
+/* A mini tear-sheet page (mirrors the print layout): logo/wordmark, room
+   label, photo, centered details, optional footer — same vars as print. */
 .tsp {
+  aspect-ratio: 9 / 16;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 16px;
+  padding: 18px 14px 20px;
   background: #fff;
   color: var(--ts-text, #2b2722);
   font-family: var(--ts-body, var(--sans));
-  font-size: 11px;
-  overflow: hidden;
-}
-.tsp-cover {
-  text-align: center;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.tsp-logo {
-  max-height: 34px;
-  margin-bottom: 8px;
-}
-.tsp-firm {
-  font-family: var(--ts-head, var(--serif));
-  font-size: 18px;
-  letter-spacing: 0.03em;
-  color: var(--ts-accent, #6d6047);
-}
-.tsp-project {
-  font-family: var(--ts-head, var(--serif));
-  font-size: 13px;
-  margin-top: 2px;
-}
-.tsp-room {
-  font-family: var(--ts-head, var(--serif));
-  color: var(--ts-accent, #6d6047);
-  border-bottom: 1.5px solid var(--ts-accent, #c9bfaa);
-  padding-bottom: 3px;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-.tsp-items {
+  font-size: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
 }
-.tsp-grid .tsp-items {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.tsp-logo {
+  max-width: 62%;
+  max-height: 40px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
-.tsp-item {
-  display: grid;
-  grid-template-columns: 54px 1fr auto;
-  gap: 10px;
-  align-items: start;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+.tsp-wordmark {
+  font-family: var(--ts-head, var(--serif));
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--ts-accent, #6d6047);
+  flex: 0 0 auto;
 }
-.tsp-grid .tsp-item,
-.tsp-spotlight .tsp-item {
-  grid-template-columns: 1fr;
+.tsp-room {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--ts-accent, #6d6047);
+  flex: 0 0 auto;
 }
 .tsp-img {
-  width: 54px;
-  height: 44px;
+  flex: 1 1 auto;
+  width: 68%;
+  min-height: 40px;
+  margin: 12px 0;
   background: #f0ede7;
-  border-radius: 4px;
+  border-radius: 3px;
 }
-.tsp-grid .tsp-img,
-.tsp-spotlight .tsp-img {
-  width: 100%;
-  height: 80px;
-}
-.tsp-name {
-  font-family: var(--ts-head, var(--serif));
-  font-size: 12px;
-}
-.tsp-vendor {
-  font-size: 8px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #999;
-  margin: 1px 0 3px;
-}
-.tsp-spec {
-  font-size: 9px;
-  color: #555;
-}
-.tsp-price {
-  font-family: var(--ts-head, var(--serif));
-  font-size: 13px;
-  white-space: nowrap;
-}
-.tsp-grid .tsp-price,
-.tsp-spotlight .tsp-price {
-  margin-top: 4px;
+.tsp-details {
+  flex: 0 0 auto;
+  line-height: 1.55;
 }
 .tsp-foot {
-  margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1.5px solid var(--ts-accent, #6d6047);
-  text-align: center;
-  font-size: 9px;
-  color: #888;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  font-size: 7.5px;
+  letter-spacing: 0.05em;
+  color: var(--ts-accent, #6d6047);
 }

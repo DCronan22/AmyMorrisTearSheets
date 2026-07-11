@@ -1,13 +1,13 @@
-import type { Item } from "./types";
-import { priceLine } from "./util";
+import type { FirmStyle, Item } from "./types";
+import { priceLine, safeLogoUrl } from "./util";
 import { triggerDownload } from "./storage";
-import logoSrc from "./assets/amy-morris-logo.png";
 
 // PowerPoint tear-sheet export — one slide per item, replicating the print/PDF
 // layout (TearSheetPrint + the .ts-page rules in App.css) exactly: a 7.5in x
-// 13.333in portrait page with the logo at top, an optional room label, the
-// product photo centered in the remaining space, and the taupe Calibri details
-// block (name / dimensions / price / lead time) at the bottom.
+// 13.333in portrait page with the firm's logo (or name) at top, an optional
+// room label, the product photo centered in the remaining space, and the
+// details block (name / SKU / dimensions / price / lead time) at the bottom.
+// The firm's style drives the logo, colors, fonts and field toggles.
 
 // Geometry in inches, mirroring the @media print CSS.
 const PAGE_W = 7.5;
@@ -19,12 +19,37 @@ const LOGO_W = 4.6; // .ts-logo width
 const ROOM_GAP = 0.55; // .ts-room margin-top
 const PHOTO_GAP = 0.45; // .ts-photo-wrap vertical margins
 const PHOTO_MAX = 5.9; // .ts-photo max-width/max-height
+const WORDMARK_H = 0.55; // .ts-wordmark (26pt line) when there's no logo
 
-const FONT = "Calibri";
-const TAUPE = "907C67"; // .ts-page color
 const FONT_PT = 18; // .ts-room / .ts-details font-size
 const LINE_SPACING_PT = FONT_PT * 1.5; // .ts-details line-height
 const LINE_IN = LINE_SPACING_PT / 72;
+
+// FONT_STACKS' web fonts aren't installed on most PowerPoint machines, so each
+// pairing maps to the closest fonts PowerPoint ships everywhere.
+const PPTX_FONTS: Record<FirmStyle["font"], { head: string; body: string }> = {
+  "classic-serif": { head: "Georgia", body: "Calibri" },
+  "modern-sans": { head: "Calibri", body: "Calibri" },
+  editorial: { head: "Georgia", body: "Georgia" },
+  minimal: { head: "Segoe UI", body: "Segoe UI" },
+};
+
+/** "#abc" / "#aabbcc" / "#aabbccdd" → the 6-digit hex pptxgenjs expects. */
+function toPptxColor(c: string, fallback: string): string {
+  const hex = c.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3,4}$/.test(hex)) {
+    return hex
+      .slice(0, 3)
+      .split("")
+      .map((ch) => ch + ch)
+      .join("")
+      .toUpperCase();
+  }
+  if (/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(hex)) {
+    return hex.slice(0, 6).toUpperCase();
+  }
+  return fallback;
+}
 
 // The print view renders images at their natural CSS-pixel size (96/in),
 // capped at PHOTO_MAX and never upscaled.
@@ -118,9 +143,17 @@ export interface PptxExportResult {
 /** Build and download a .pptx with one tear-sheet slide per item. */
 export async function exportItemsToPptx(
   items: Item[],
-  projectName: string
+  projectName: string,
+  branding: { style: FirmStyle; firmName: string }
 ): Promise<PptxExportResult> {
   if (items.length === 0) return { slides: 0, missingImages: 0 };
+
+  const { style, firmName } = branding;
+  const fonts = PPTX_FONTS[style.font];
+  const accent = toPptxColor(style.accentColor, "6D6047");
+  const text = toPptxColor(style.textColor, "2B2722");
+  const wordmark = style.coverTitle.trim() || firmName;
+  const footer = style.footerText.trim();
 
   // Loaded on demand so the (large) pptx generator stays out of the main bundle.
   const { default: PptxGenJS } = await import("pptxgenjs");
@@ -135,8 +168,9 @@ export async function exportItemsToPptx(
     }
     return p;
   };
+  const logoUrl = safeLogoUrl(style.logoUrl);
   const [logo, ...images] = await Promise.all([
-    getImage(logoSrc),
+    logoUrl ? getImage(logoUrl) : Promise.resolve(null),
     ...items.map((it) => {
       const u = it.imageUrl.trim();
       return u ? getImage(u) : Promise.resolve(null);
@@ -154,7 +188,7 @@ export async function exportItemsToPptx(
     const slide = pptx.addSlide();
     slide.background = { color: "FFFFFF" };
 
-    // Logo, centered at the top.
+    // Logo (or the firm-name wordmark), centered at the top.
     let contentTop = PAD_TOP;
     if (logo) {
       const h = (LOGO_W * logo.h) / logo.w;
@@ -166,6 +200,20 @@ export async function exportItemsToPptx(
         h,
       });
       contentTop += h;
+    } else {
+      slide.addText(wordmark, {
+        x: PAD_SIDE,
+        y: contentTop,
+        w: PAGE_W - PAD_SIDE * 2,
+        h: WORDMARK_H,
+        fontFace: fonts.head,
+        fontSize: 26,
+        color: accent,
+        charSpacing: 2,
+        align: "center",
+        valign: "middle",
+      });
+      contentTop += WORDMARK_H;
     }
 
     // Optional room label below the logo.
@@ -177,9 +225,9 @@ export async function exportItemsToPptx(
         y: contentTop,
         w: PAGE_W - PAD_SIDE * 2,
         h: LINE_IN,
-        fontFace: FONT,
+        fontFace: fonts.body,
         fontSize: FONT_PT,
-        color: TAUPE,
+        color: accent,
         align: "center",
         valign: "top",
       });
@@ -188,10 +236,12 @@ export async function exportItemsToPptx(
 
     // Details block, anchored to the bottom padding line.
     const lines = [it.name.trim() || "Untitled item"];
+    const sku = it.sku.trim();
+    if (style.showSku && sku) lines.push(`SKU: ${sku}`);
     const dims = it.dimensions.trim();
-    if (dims) lines.push(`Dimensions: ${dims}`);
+    if (style.showDimensions && dims) lines.push(`Dimensions: ${dims}`);
     const price = priceLine(it);
-    if (price) lines.push(price);
+    if (style.showPrice && price) lines.push(price);
     const lead = it.leadTime.trim();
     if (lead) lines.push(`Lead Time: ${lead}`);
     const detailsH = lines.length * LINE_IN;
@@ -201,13 +251,30 @@ export async function exportItemsToPptx(
       y: detailsTop,
       w: PAGE_W - PAD_SIDE * 2,
       h: detailsH,
-      fontFace: FONT,
+      fontFace: fonts.body,
       fontSize: FONT_PT,
-      color: TAUPE,
+      color: text,
       align: "center",
       valign: "middle",
       lineSpacing: LINE_SPACING_PT,
     });
+
+    // Optional firm tagline, sitting in the page's bottom padding (mirrors
+    // the print CSS .ts-footer at bottom: 0.3in).
+    if (footer) {
+      slide.addText(footer, {
+        x: PAD_SIDE,
+        y: PAGE_H - 0.3 - 0.25,
+        w: PAGE_W - PAD_SIDE * 2,
+        h: 0.25,
+        fontFace: fonts.body,
+        fontSize: 10,
+        color: accent,
+        charSpacing: 1,
+        align: "center",
+        valign: "bottom",
+      });
+    }
 
     // Photo, centered in the space between the header block and the details.
     const areaTop = contentTop + PHOTO_GAP;

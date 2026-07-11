@@ -112,6 +112,11 @@ export default function Workspace({
   const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
   const restoreInput = useRef<HTMLInputElement>(null);
 
+  // The firm's style (or the default look) drives the print/PDF and PowerPoint
+  // exports plus a touch of the on-screen accent. Memoized so a null style
+  // doesn't mint a fresh object every render (TearSheetPrint is memo'd on it).
+  const style = useMemo(() => firm.style ?? defaultFirmStyle(), [firm.style]);
+
   // Brand the browser tab for whichever firm is signed in; restore the generic
   // product name when leaving the workspace (sign-out / admin panel).
   useEffect(() => {
@@ -216,7 +221,10 @@ export default function Workspace({
     setSaveError(null);
     flashMsg("Preparing PowerPoint…");
     try {
-      const { missingImages } = await exportItemsToPptx(items, name);
+      const { missingImages } = await exportItemsToPptx(items, name, {
+        style,
+        firmName: firm.name,
+      });
       flashMsg(
         missingImages > 0
           ? `PowerPoint exported — ${missingImages} image${
@@ -662,9 +670,6 @@ export default function Workspace({
       .join("")
       .toUpperCase() || "TS";
 
-  // The firm's style (or the default look) drives exports and a touch of the
-  // on-screen accent so the workspace itself feels tailored to the company.
-  const style = firm.style ?? defaultFirmStyle();
   const appVars = {
     "--accent": style.accentColor,
     "--accent-dark": style.accentColor,
@@ -1026,7 +1031,12 @@ export default function Workspace({
       </div>
 
       {/* Print layout lives outside .no-print and is shown only when printing */}
-      <TearSheetPrint project={project} items={printItems} />
+      <TearSheetPrint
+        project={project}
+        items={printItems}
+        style={style}
+        firmName={firm.name}
+      />
 
       {editing && (
         <ItemEditor
