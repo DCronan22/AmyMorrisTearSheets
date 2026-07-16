@@ -79,7 +79,13 @@ export default function Workspace({
 
   const [editing, setEditing] = useState<Item | null>(null);
   const [importing, setImporting] = useState(false);
-  const [showIndex, setShowIndex] = useState<number | null>(null);
+  // What presentation mode is showing: a snapshot of the item set (whole
+  // project, selection, or one room), a top-bar title, and where to start.
+  const [showing, setShowing] = useState<{
+    items: Item[];
+    title: string;
+    startIndex: number;
+  } | null>(null);
   const [editingHeader, setEditingHeader] = useState(false);
   const [showStyle, setShowStyle] = useState(false);
   // Optional first-run prompt: shown once per firm that has no style yet, and
@@ -789,15 +795,53 @@ export default function Workspace({
     [applyProjectChange]
   );
 
-  // Open the slideshow at the clicked item's position in the full project.
+  // --- Presenting -----------------------------------------------------------
+
+  // Rooms in on-screen order (first seen in the item list), matching the
+  // grouped gallery — `rooms` above is alphabetical for the filter dropdown.
+  const presentRooms = useMemo(() => {
+    const seen: string[] = [];
+    for (const it of project?.items ?? EMPTY_ITEMS) {
+      const room = it.room.trim();
+      if (room && !seen.includes(room)) seen.push(room);
+    }
+    return seen;
+  }, [project]);
+
+  // Present the whole project, starting at the given item (a clicked card).
   const presentItem = useCallback(
     (item: Item) => {
       if (!project) return;
       const realIndex = project.items.findIndex((x) => x.id === item.id);
-      setShowIndex(realIndex >= 0 ? realIndex : 0);
+      setShowing({
+        items: project.items,
+        title: [project.name, project.client].filter(Boolean).join(" · "),
+        startIndex: realIndex >= 0 ? realIndex : 0,
+      });
     },
     [project]
   );
+
+  function presentAll() {
+    if (!project || project.items.length === 0) return;
+    setShowing({
+      items: project.items,
+      title: [project.name, project.client].filter(Boolean).join(" · "),
+      startIndex: 0,
+    });
+  }
+
+  function presentSelected() {
+    if (selectedItems.length === 0) return;
+    setShowing({ items: selectedItems, title: "Selection", startIndex: 0 });
+  }
+
+  function presentRoom(room: string) {
+    if (!project) return;
+    const items = project.items.filter((it) => it.room.trim() === room);
+    if (items.length === 0) return;
+    setShowing({ items, title: room, startIndex: 0 });
+  }
 
   async function createProject() {
     setSaveError(null);
@@ -1048,13 +1092,29 @@ export default function Workspace({
                 <button className="btn" onClick={() => setEditing(emptyItem())}>
                   + Add item
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => project.items.length && setShowIndex(0)}
-                  disabled={!project.items.length}
-                >
-                  ▶ Present
-                </button>
+                <div className="menu">
+                  <button className="btn" disabled={!project.items.length}>
+                    ▶ Present
+                  </button>
+                  <div className="menu-list">
+                    <button
+                      disabled={!project.items.length}
+                      onClick={presentAll}
+                    >
+                      Present all
+                    </button>
+                    {selectedCount > 0 && (
+                      <button onClick={presentSelected}>
+                        Present selected ({selectedCount})
+                      </button>
+                    )}
+                    {presentRooms.map((room) => (
+                      <button key={room} onClick={() => presentRoom(room)}>
+                        Present room: {room}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <button
                   className="btn"
                   onClick={() => print()}
@@ -1385,12 +1445,13 @@ export default function Workspace({
           destinationName={importTarget === "client" ? project.name : undefined}
         />
       )}
-      {showIndex !== null && (
+      {showing && (
         <Slideshow
-          project={project}
-          startIndex={showIndex}
+          items={showing.items}
+          title={showing.title}
+          startIndex={showing.startIndex}
           showVendor={showVendor}
-          onClose={() => setShowIndex(null)}
+          onClose={() => setShowing(null)}
         />
       )}
       {styleModals}
