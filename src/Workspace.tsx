@@ -1020,180 +1020,230 @@ export default function Workspace({
     <>
       <div className="app no-print" style={appVars}>
         <header className="topbar">
-          <div className="brand">
-            <span className="brand-mark">{initials}</span>
-            <div>
-              <div className="brand-name">{firm.name}</div>
-              <div className="brand-sub">Tear Sheets</div>
+          {/* Row 1: brand · navigation · overflow menu. */}
+          <div className="topbar-row">
+            <div className="brand">
+              <span className="brand-mark">{initials}</span>
+              <div>
+                <div className="brand-name">{firm.name}</div>
+                <div className="brand-sub">Tear Sheets</div>
+              </div>
             </div>
-          </div>
 
-          <div className="toolbar">
-            <nav className="view-toggle" role="tablist" aria-label="Areas">
+            <div className="topbar-right">
+              <nav className="view-toggle" aria-label="Areas">
               <button
                 className={viewMode === "home" ? "active" : ""}
+                aria-current={viewMode === "home" ? "page" : undefined}
                 onClick={() => setViewMode("home")}
               >
                 Home
               </button>
               <button
                 className={viewMode === "clients" ? "active" : ""}
+                aria-current={viewMode === "clients" ? "page" : undefined}
                 onClick={() => setViewMode("clients")}
               >
                 Clients
               </button>
               <button
                 className={viewMode === "library" ? "active" : ""}
+                aria-current={viewMode === "library" ? "page" : undefined}
                 onClick={openLibrary}
               >
                 Database
               </button>
               <button
                 className={viewMode === "inventory" ? "active" : ""}
+                aria-current={viewMode === "inventory" ? "page" : undefined}
                 onClick={openInventory}
               >
                 Inventory
               </button>
-            </nav>
-            {viewMode === "clients" && (
-              <>
-                <span className="divider" />
-                <select
-                  className="project-select"
-                  value={project.id}
-                  onChange={(e) => setActiveProjectId(e.target.value)}
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn ghost" onClick={createProject}>
-                  + Project
-                </button>
-                <span className="divider" />
+              </nav>
+              <span className="divider" />
+              {/* Secondary / rare actions */}
+              <div className="menu">
                 <button
-                  className="btn"
-                  onClick={openPicker}
-                  title="Add pieces from your master database"
+                  className="btn ghost"
+                  aria-label="More options"
+                  title="More options"
                 >
-                  ＋ From database
+                  ⋯
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setImportTarget("client");
-                    setImporting(true);
-                  }}
-                >
-                  ⬆ Import
-                </button>
-                <button className="btn" onClick={() => setEditing(emptyItem())}>
-                  + Add item
-                </button>
-                <div className="menu">
-                  <button className="btn" disabled={!project.items.length}>
-                    ▶ Present
+                <div className="menu-list">
+                  <button onClick={toggleShowVendor}>
+                    {showVendor ? "✓ " : ""}Show vendor on cards
                   </button>
-                  <div className="menu-list">
-                    <button
-                      disabled={!project.items.length}
-                      onClick={presentAll}
-                    >
-                      Present all
-                    </button>
-                    {selectedCount > 0 && (
-                      <button onClick={presentSelected}>
-                        Present selected ({selectedCount})
-                      </button>
-                    )}
-                    {presentRooms.map((room) => (
-                      <button key={room} onClick={() => presentRoom(room)}>
-                        Present room: {room}
-                      </button>
-                    ))}
-                  </div>
+                  <button onClick={() => setShowStyle(true)}>
+                    Tear sheet style…
+                  </button>
+                  <hr className="menu-sep" />
+                  <button onClick={duplicateProject}>
+                    Duplicate this project
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => removeProject(project.id)}
+                  >
+                    Delete this project
+                  </button>
+                  <hr className="menu-sep" />
+                  <button
+                    onClick={() =>
+                      exportProjectFile({
+                        version: 1,
+                        projects,
+                        activeProjectId: project.id,
+                      })
+                    }
+                  >
+                    Export backup (.json)
+                  </button>
+                  <button onClick={() => restoreInput.current?.click()}>
+                    Restore backup (.json)…
+                  </button>
+                  <hr className="menu-sep" />
+                  {isPlatformAdmin && (
+                    <button onClick={onOpenAdmin}>Platform admin…</button>
+                  )}
+                  <button onClick={onSignOut}>Sign out ({userEmail})</button>
                 </div>
-                <button
-                  className="btn"
-                  onClick={() => print()}
-                  disabled={!project.items.length}
-                >
-                  🖶 Print / PDF
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => print(selectedItems)}
-                  disabled={selectedCount === 0}
-                  title="Print only the selected items"
-                >
-                  🖶 Print selected ({selectedCount})
-                </button>
-              </>
-            )}
-            <span className="divider" />
-            <div className="menu">
-              <button className="btn ghost">⋯</button>
-              <div className="menu-list">
-                <button
-                  onClick={() =>
-                    exportItemsToSpreadsheet(project.items, project.name)
-                  }
-                >
-                  Export items (.xlsx)
-                </button>
-                <button
-                  disabled={selectedCount === 0}
-                  onClick={() =>
-                    exportItemsToSpreadsheet(selectedItems, project.name)
-                  }
-                >
-                  Export selected ({selectedCount}) (.xlsx)
-                </button>
-                <button
-                  disabled={project.items.length === 0 || exportingPptx}
-                  onClick={() => exportPowerPoint(project.items, project.name)}
-                >
-                  Export PowerPoint (.pptx)
-                </button>
-                <button
-                  disabled={selectedCount === 0 || exportingPptx}
-                  onClick={() => exportPowerPoint(selectedItems, project.name)}
-                >
-                  Export selected ({selectedCount}) (.pptx)
-                </button>
-                <button onClick={toggleShowVendor}>
-                  {showVendor ? "✓ " : ""}Show vendor on cards
-                </button>
-                <button
-                  onClick={() =>
-                    exportProjectFile({
-                      version: 1,
-                      projects,
-                      activeProjectId: project.id,
-                    })
-                  }
-                >
-                  Export backup (.json)
-                </button>
-                <button onClick={() => restoreInput.current?.click()}>
-                  Restore backup (.json)…
-                </button>
-                <button onClick={duplicateProject}>Duplicate this project</button>
-                <button onClick={() => setShowStyle(true)}>
-                  Tear sheet style…
-                </button>
-                <button onClick={() => removeProject(project.id)}>
-                  Delete this project
-                </button>
-                {isPlatformAdmin && (
-                  <button onClick={onOpenAdmin}>Platform admin…</button>
-                )}
-                <button onClick={onSignOut}>Sign out ({userEmail})</button>
               </div>
             </div>
           </div>
+
+          {/* Row 2 (Clients only): project switcher · content actions ·
+              output actions (Present / Print / Export). */}
+          {viewMode === "clients" && (
+            <div className="toolbar">
+                <div className="toolbar-group">
+                  <select
+                    className="project-select"
+                    value={project.id}
+                    onChange={(e) => setActiveProjectId(e.target.value)}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn ghost"
+                    onClick={createProject}
+                    title="Create a new client project"
+                  >
+                    ＋ New project
+                  </button>
+                </div>
+                <span className="divider" />
+                {/* Content actions — one primary per toolbar */}
+                <div className="toolbar-group">
+                  <button
+                    className="btn primary"
+                    onClick={() => setEditing(emptyItem())}
+                  >
+                    ＋ Add item
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={openPicker}
+                    title="Add pieces from your master database"
+                  >
+                    From database
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setImportTarget("client");
+                      setImporting(true);
+                    }}
+                    title="Import items from a spreadsheet or PowerPoint file"
+                  >
+                    Import
+                  </button>
+                </div>
+                <span className="spacer" />
+                {/* Output actions: Present, Print, Export */}
+                <div className="toolbar-group">
+                  <div className="menu">
+                    <button className="btn" disabled={!project.items.length}>
+                      Present ▾
+                    </button>
+                    <div className="menu-list">
+                      <button
+                        disabled={!project.items.length}
+                        onClick={presentAll}
+                      >
+                        Present all
+                      </button>
+                      {selectedCount > 0 && (
+                        <button onClick={presentSelected}>
+                          Present selected ({selectedCount})
+                        </button>
+                      )}
+                      {presentRooms.length > 0 && <hr className="menu-sep" />}
+                      {presentRooms.map((room) => (
+                        <button key={room} onClick={() => presentRoom(room)}>
+                          Present room: {room}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    className="btn"
+                    onClick={() => print()}
+                    disabled={!project.items.length}
+                    title="Print all tear sheets, or save them as a PDF"
+                  >
+                    Print
+                  </button>
+                  <div className="menu">
+                    <button className="btn" disabled={!project.items.length}>
+                      Export ▾
+                    </button>
+                    <div className="menu-list">
+                      <button
+                        disabled={project.items.length === 0}
+                        onClick={() =>
+                          exportItemsToSpreadsheet(project.items, project.name)
+                        }
+                      >
+                        Excel spreadsheet (.xlsx)
+                      </button>
+                      <button
+                        disabled={selectedCount === 0}
+                        onClick={() =>
+                          exportItemsToSpreadsheet(selectedItems, project.name)
+                        }
+                      >
+                        Excel — selected items
+                        {selectedCount > 0 ? ` (${selectedCount})` : ""}
+                      </button>
+                      <hr className="menu-sep" />
+                      <button
+                        disabled={project.items.length === 0 || exportingPptx}
+                        onClick={() =>
+                          exportPowerPoint(project.items, project.name)
+                        }
+                      >
+                        PowerPoint (.pptx)
+                      </button>
+                      <button
+                        disabled={selectedCount === 0 || exportingPptx}
+                        onClick={() =>
+                          exportPowerPoint(selectedItems, project.name)
+                        }
+                      >
+                        PowerPoint — selected items
+                        {selectedCount > 0 ? ` (${selectedCount})` : ""}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+            </div>
+          )}
         </header>
 
         {saveError && <p className="status-err save-banner">{saveError}</p>}
@@ -1237,6 +1287,7 @@ export default function Workspace({
             }}
             onPrint={(items) => print(items.map(libraryToItem))}
             onDeleteSelected={removeLibrarySelected}
+            onClearSelection={() => setLibrarySelected(new Set())}
             onAddSelectedToClient={addLibrarySelectionToClient}
             onAddSelectedToInventory={addLibrarySelectionToInventory}
             activeClientName={project.name}
@@ -1258,6 +1309,7 @@ export default function Workspace({
             onAddFromDatabase={openInventoryPicker}
             onPrint={(items) => print(items.map(inventoryToItem))}
             onDeleteSelected={removeInventorySelected}
+            onClearSelection={() => setInventorySelected(new Set())}
             showVendor={showVendor}
           />
         ) : (
@@ -1313,32 +1365,49 @@ export default function Workspace({
           </span>
         </CatalogFilterBar>
 
-        <section className="selectbar">
-          <button
-            className="btn ghost small"
-            onClick={selectAllFiltered}
-            disabled={filtered.length === 0 || allFilteredSelected}
-          >
-            Select all{filtered.length ? ` (${filtered.length})` : ""}
-          </button>
-          <button
-            className="btn ghost small"
-            onClick={clearSelection}
-            disabled={selectedCount === 0}
-          >
-            Clear
-          </button>
-          <button
-            className="btn ghost small danger"
-            onClick={deleteSelected}
-            disabled={selectedCount === 0}
-            title="Delete the selected items from this project"
-          >
-            Delete selected ({selectedCount})
-          </button>
-          <span className="muted small select-count">
-            {selectedCount} selected
-          </span>
+        {/* Selection strip: a quiet "Select all" when nothing is selected;
+            count + batch actions + Clear selection once items are chosen. */}
+        <section
+          className={`selectbar${selectedCount > 0 ? " has-selection" : ""}`}
+        >
+          {selectedCount === 0 ? (
+            <button
+              className="btn ghost small"
+              onClick={selectAllFiltered}
+              disabled={filtered.length === 0}
+            >
+              Select all{filtered.length ? ` (${filtered.length})` : ""}
+            </button>
+          ) : (
+            <>
+              <span className="selectbar-count">{selectedCount} selected</span>
+              <button
+                className="btn ghost small"
+                onClick={selectAllFiltered}
+                disabled={allFilteredSelected}
+              >
+                Select all{filtered.length ? ` (${filtered.length})` : ""}
+              </button>
+              <button
+                className="btn ghost small"
+                onClick={() => print(selectedItems)}
+                title="Print only the selected items"
+              >
+                Print selected
+              </button>
+              <button
+                className="btn ghost small danger"
+                onClick={deleteSelected}
+                title="Delete the selected items from this project"
+              >
+                Delete selected
+              </button>
+              <span className="spacer" />
+              <button className="btn ghost small" onClick={clearSelection}>
+                Clear selection
+              </button>
+            </>
+          )}
         </section>
 
         <main className="content">

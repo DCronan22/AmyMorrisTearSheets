@@ -22,6 +22,8 @@ interface Props {
   onPrint: (items: InventoryItem[]) => void;
   /** Delete the selected entries (with confirmation). */
   onDeleteSelected: () => void;
+  /** Deselect everything (the selection strip's "Clear selection"). */
+  onClearSelection: () => void;
   /** Show the vendor on each card (visual only). */
   showVendor?: boolean;
 }
@@ -44,6 +46,7 @@ export default function InventoryView({
   onAddFromDatabase,
   onPrint,
   onDeleteSelected,
+  onClearSelection,
   showVendor = true,
 }: Props) {
   const { filter, setFilter, filtered } = useCatalogFilter(inventory);
@@ -65,16 +68,17 @@ export default function InventoryView({
           </p>
         </div>
         <div className="library-actions">
+          <button className="btn primary" onClick={onAdd}>
+            ＋ Add item
+          </button>
           <button
             className="btn"
             onClick={onAddFromDatabase}
             title="Copy pieces from your database into inventory"
           >
-            ＋ From database
+            From database
           </button>
-          <button className="btn" onClick={onAdd}>
-            + Add item
-          </button>
+          <span className="divider" />
           <button
             className="btn"
             onClick={() => onPrint(filtered)}
@@ -85,25 +89,7 @@ export default function InventoryView({
                 : "Print every inventory entry as a tear sheet"
             }
           >
-            🖶 Print{hasFilter ? ` (${filtered.length})` : ""}
-          </button>
-          <button
-            className="btn"
-            onClick={() =>
-              onPrint(inventory.filter((inv) => selected.has(inv.id)))
-            }
-            disabled={selectedCount === 0}
-            title="Print only the selected entries as tear sheets"
-          >
-            🖶 Print selected ({selectedCount})
-          </button>
-          <button
-            className="btn danger"
-            onClick={onDeleteSelected}
-            disabled={selectedCount === 0}
-            title="Remove the selected entries from your inventory"
-          >
-            Remove selected ({selectedCount})
+            Print{hasFilter ? ` (${filtered.length})` : ""}
           </button>
         </div>
       </section>
@@ -118,6 +104,33 @@ export default function InventoryView({
           {filtered.length} of {inventory.length}
         </span>
       </CatalogFilterBar>
+
+      {/* Batch actions for the current selection. */}
+      {selectedCount > 0 && (
+        <section className="selectbar has-selection">
+          <span className="selectbar-count">{selectedCount} selected</span>
+          <button
+            className="btn ghost small"
+            onClick={() =>
+              onPrint(inventory.filter((inv) => selected.has(inv.id)))
+            }
+            title="Print only the selected entries as tear sheets"
+          >
+            Print selected
+          </button>
+          <button
+            className="btn ghost small danger"
+            onClick={onDeleteSelected}
+            title="Remove the selected entries from your inventory"
+          >
+            Remove selected
+          </button>
+          <span className="spacer" />
+          <button className="btn ghost small" onClick={onClearSelection}>
+            Clear selection
+          </button>
+        </section>
+      )}
 
       {error && <p className="status-err">{error}</p>}
 

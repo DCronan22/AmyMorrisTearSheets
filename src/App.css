@@ -13,15 +13,23 @@
   position: sticky;
   top: 0;
   z-index: 20;
+  padding: 12px 4px;
+  background: rgba(247, 245, 241, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+/* Row 1: brand on the left; navigation + overflow menu on the right. */
+.topbar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 4px;
-  background: rgba(247, 245, 241, 0.92);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .brand {
@@ -54,11 +62,23 @@
   color: var(--muted);
 }
 
+/* Row 2 (Clients): the action toolbar. Content actions sit on the left,
+   output actions (Present / Print / Export) on the right. */
 .toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 12px;
+}
+.toolbar .spacer {
+  flex: 1;
+}
+/* A cluster of related toolbar actions; wraps as one unit at narrow widths. */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .divider {
   width: 1px;
@@ -183,9 +203,26 @@ a.btn {
   border-radius: 7px;
   font-size: 13.5px;
   color: var(--ink);
+  white-space: nowrap;
 }
 .menu-list button:hover {
   background: var(--bg);
+}
+.menu-list button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.menu-list button:disabled:hover {
+  background: none;
+}
+.menu-list button.danger {
+  color: var(--danger);
+}
+/* Thin rule between groups of related menu items. */
+.menu-sep {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 5px 4px;
 }
 
 /* --- Project header -------------------------------------------- */
@@ -375,14 +412,36 @@ a.btn {
 }
 
 /* --- Selection ------------------------------------------------- */
+/* Slim row under the filters; becomes an accent-tinted strip when items are
+   selected (count · batch actions · Clear selection), same in every view. */
 .selectbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
   margin: -8px 0 22px;
+  min-height: 30px;
 }
-.select-count {
-  margin-left: 2px;
+.selectbar.has-selection {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.selectbar-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent-dark);
+  white-space: nowrap;
+  padding-right: 2px;
+}
+.selectbar .spacer {
+  flex: 1;
+}
+/* In the Database / Inventory views the strip sits right below the filters. */
+.library .selectbar {
+  margin: -10px 0 20px;
 }
 .card-check {
   position: absolute;
@@ -864,27 +923,41 @@ a.btn {
    Master library + Clients/Library toggle + room grouping
    ============================================================ */
 
-/* Segmented Clients / Library switch in the toolbar. */
+/* Home / Clients / Database / Inventory navigation. Styled as quiet
+   editorial tabs (not action buttons): uppercase labels, the current
+   area underlined in the accent color. */
 .view-toggle {
   display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
+  align-items: center;
+  gap: 2px;
 }
 .view-toggle button {
+  position: relative;
   border: none;
-  background: var(--surface);
+  background: transparent;
   color: var(--muted);
-  padding: 8px 16px;
-  font-size: 13.5px;
-  font-weight: 500;
+  padding: 9px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transition: color 0.15s;
 }
 .view-toggle button:hover {
   color: var(--ink);
 }
 .view-toggle button.active {
+  color: var(--accent-dark);
+}
+.view-toggle button.active::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
   background: var(--accent);
-  color: #fff;
 }
 
 /* Library view header. */
