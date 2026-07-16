@@ -11,14 +11,17 @@ import { triggerDownload } from "./storage";
 
 // Geometry in inches, mirroring the @media print CSS — which in turn mirrors
 // Amy Morris's original hand-made tear sheets (measured from the reference
-// decks): logo 4.72in centered at 0.5in, photo scaled to the full page width,
-// details block with its top edge fixed at 10.99in, single line spacing.
+// decks): logo 4.72in centered at 0.5in, photo scaled to the full page width
+// (height-capped at 5.9in), details block with its top edge fixed at 10.99in,
+// single line spacing.
 const PAGE_W = 7.5;
 const PAGE_H = 13.333;
 const PAD_TOP = 0.5; // .ts-page padding-top
 const PAD_SIDE = 0.36; // .ts-page side padding
 const DETAILS_TOP = 10.99; // .ts-details fixed top edge
+const DETAILS_SIDE = 0.49; // .ts-details left/right — the reference text box
 const LOGO_W = 4.72; // .ts-logo width
+const PHOTO_MAX_H = 5.9; // .ts-photo max-height — caps square/portrait shots
 const ROOM_GAP = 0.55; // .ts-room margin-top
 const PHOTO_GAP = 0.45; // .ts-photo-wrap vertical margins
 const WORDMARK_H = 0.75; // .ts-wordmark (42pt line) when there's no logo
@@ -152,8 +155,8 @@ export async function exportItemsToPptx(
 
   const { style, firmName } = branding;
   const fonts = PPTX_FONTS[style.font];
-  const accent = toPptxColor(style.accentColor, "6D6047");
-  const text = toPptxColor(style.textColor, "2B2722");
+  const accent = toPptxColor(style.accentColor, "907C67");
+  const text = toPptxColor(style.textColor, "907C67");
   const wordmark = style.coverTitle.trim() || firmName;
   const footer = style.footerText.trim();
 
@@ -211,7 +214,7 @@ export async function exportItemsToPptx(
         fontFace: fonts.head,
         fontSize: WORDMARK_PT,
         color: accent,
-        charSpacing: 2,
+        charSpacing: WORDMARK_PT * 0.08, // .ts-wordmark letter-spacing 0.08em
         align: "center",
         valign: "middle",
         fit: "shrink",
@@ -219,8 +222,9 @@ export async function exportItemsToPptx(
       contentTop += WORDMARK_H;
     }
 
-    // Optional room label below the logo.
-    const room = it.room.trim();
+    // Optional room label below the logo (per-firm toggle; off by default —
+    // the reference sheets have no room label).
+    const room = style.showRoom ? it.room.trim() : "";
     if (room) {
       contentTop += ROOM_GAP;
       slide.addText(room, {
@@ -251,9 +255,9 @@ export async function exportItemsToPptx(
     const detailsH = lines.length * LINE_IN;
     const detailsTop = DETAILS_TOP;
     slide.addText(lines.join("\n"), {
-      x: PAD_SIDE,
+      x: DETAILS_SIDE,
       y: detailsTop,
-      w: PAGE_W - PAD_SIDE * 2,
+      w: PAGE_W - DETAILS_SIDE * 2,
       h: detailsH,
       fontFace: fonts.body,
       fontSize: FONT_PT,
@@ -274,22 +278,24 @@ export async function exportItemsToPptx(
         fontFace: fonts.body,
         fontSize: 10,
         color: accent,
-        charSpacing: 1,
+        charSpacing: 0.5, // .ts-footer letter-spacing 0.05em at 10pt
         align: "center",
         valign: "bottom",
       });
     }
 
     // Photo, centered in the space between the header block and the details.
-    // Scaled to the full page width (edge to edge, like the reference sheets)
-    // unless the image is tall enough that height becomes the constraint.
+    // Scaled to the full page width (edge to edge, like the reference sheets),
+    // but height-capped so square/portrait shots never dominate the page —
+    // same rule as the print CSS (.ts-photo width 7.5in, max-height 5.9in).
     const areaTop = contentTop + PHOTO_GAP;
     const areaH = detailsTop - PHOTO_GAP - areaTop;
+    const maxH = Math.min(areaH, PHOTO_MAX_H);
     const img = images[i];
     if (img) {
       const natW = img.w / CSS_DPI;
       const natH = img.h / CSS_DPI;
-      const scale = Math.min(PAGE_W / natW, areaH / natH);
+      const scale = Math.min(PAGE_W / natW, maxH / natH);
       const w = natW * scale;
       const h = natH * scale;
       slide.addImage({
@@ -301,16 +307,20 @@ export async function exportItemsToPptx(
       });
     } else {
       if (it.imageUrl.trim()) missingImages++;
-      // A filled text box (not a shape): text boxes default to no outline, so
-      // no theme can draw a stray border around the placeholder.
+      // The placeholder card scales like any photo (print stretches the 400x300
+      // placeholder SVG the same way). A filled text box, not a shape: text
+      // boxes default to no outline, so no theme can draw a stray border.
+      const scale = Math.min(PAGE_W / PH_W, maxH / PH_H);
+      const w = PH_W * scale;
+      const h = PH_H * scale;
       slide.addText("No image", {
-        x: (PAGE_W - PH_W) / 2,
-        y: areaTop + (areaH - PH_H) / 2,
-        w: PH_W,
-        h: PH_H,
+        x: (PAGE_W - w) / 2,
+        y: areaTop + (areaH - h) / 2,
+        w,
+        h,
         fill: { color: PH_FILL },
         fontFace: "Georgia",
-        fontSize: 15,
+        fontSize: 15 * scale, // the SVG's 20px lettering, scaled with the card
         color: PH_TEXT_COLOR,
         align: "center",
         valign: "middle",
