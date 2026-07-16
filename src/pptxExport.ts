@@ -9,20 +9,22 @@ import { triggerDownload } from "./storage";
 // details block (name / SKU / dimensions / price / lead time) at the bottom.
 // The firm's style drives the logo, colors, fonts and field toggles.
 
-// Geometry in inches, mirroring the @media print CSS.
+// Geometry in inches, mirroring the @media print CSS — which in turn mirrors
+// Amy Morris's original hand-made tear sheets (measured from the reference
+// decks): logo 4.72in centered at 0.5in, photo scaled to the full page width,
+// details block with its top edge fixed at 10.99in, single line spacing.
 const PAGE_W = 7.5;
 const PAGE_H = 13.333;
 const PAD_TOP = 0.5; // .ts-page padding-top
 const PAD_SIDE = 0.36; // .ts-page side padding
-const PAD_BOTTOM = 0.85; // .ts-page padding-bottom
-const LOGO_W = 4.6; // .ts-logo width
+const DETAILS_TOP = 10.99; // .ts-details fixed top edge
+const LOGO_W = 4.72; // .ts-logo width
 const ROOM_GAP = 0.55; // .ts-room margin-top
 const PHOTO_GAP = 0.45; // .ts-photo-wrap vertical margins
-const PHOTO_MAX = 5.9; // .ts-photo max-width/max-height
 const WORDMARK_H = 0.55; // .ts-wordmark (26pt line) when there's no logo
 
 const FONT_PT = 18; // .ts-room / .ts-details font-size
-const LINE_SPACING_PT = FONT_PT * 1.5; // .ts-details line-height
+const LINE_SPACING_PT = FONT_PT * 1.21; // .ts-details line-height
 const LINE_IN = LINE_SPACING_PT / 72;
 
 // FONT_STACKS' web fonts aren't installed on most PowerPoint machines, so each
@@ -51,8 +53,7 @@ function toPptxColor(c: string, fallback: string): string {
   return fallback;
 }
 
-// The print view renders images at their natural CSS-pixel size (96/in),
-// capped at PHOTO_MAX and never upscaled.
+// Natural image sizes are measured in CSS pixels (96/in) before scaling.
 const CSS_DPI = 96;
 
 // Placeholder card matching util.PLACEHOLDER_IMG (400x300 SVG); drawn as a
@@ -234,7 +235,8 @@ export async function exportItemsToPptx(
       contentTop += LINE_IN;
     }
 
-    // Details block, anchored to the bottom padding line.
+    // Details block — top edge fixed like the reference template's text box;
+    // extra lines grow downward into the bottom margin.
     const lines = [it.name.trim() || "Untitled item"];
     const sku = it.sku.trim();
     if (style.showSku && sku) lines.push(`SKU: ${sku}`);
@@ -245,7 +247,7 @@ export async function exportItemsToPptx(
     const lead = it.leadTime.trim();
     if (lead) lines.push(`Lead Time: ${lead}`);
     const detailsH = lines.length * LINE_IN;
-    const detailsTop = PAGE_H - PAD_BOTTOM - detailsH;
+    const detailsTop = DETAILS_TOP;
     slide.addText(lines.join("\n"), {
       x: PAD_SIDE,
       y: detailsTop,
@@ -255,7 +257,7 @@ export async function exportItemsToPptx(
       fontSize: FONT_PT,
       color: text,
       align: "center",
-      valign: "middle",
+      valign: "top",
       lineSpacing: LINE_SPACING_PT,
     });
 
@@ -277,15 +279,15 @@ export async function exportItemsToPptx(
     }
 
     // Photo, centered in the space between the header block and the details.
+    // Scaled to the full page width (edge to edge, like the reference sheets)
+    // unless the image is tall enough that height becomes the constraint.
     const areaTop = contentTop + PHOTO_GAP;
     const areaH = detailsTop - PHOTO_GAP - areaTop;
-    const maxW = Math.min(PHOTO_MAX, PAGE_W - PAD_SIDE * 2);
-    const maxH = Math.min(PHOTO_MAX, areaH);
     const img = images[i];
     if (img) {
       const natW = img.w / CSS_DPI;
       const natH = img.h / CSS_DPI;
-      const scale = Math.min(maxW / natW, maxH / natH, 1);
+      const scale = Math.min(PAGE_W / natW, areaH / natH);
       const w = natW * scale;
       const h = natH * scale;
       slide.addImage({
