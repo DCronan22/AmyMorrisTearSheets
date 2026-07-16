@@ -737,6 +737,116 @@ a.btn {
   font-size: 18px;
 }
 
+/* --- Slideshow: layout toggle + 2×2 grid (four per screen) ------ */
+.show-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.show-layout {
+  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.show-layout button {
+  border: none;
+  background: transparent;
+  color: #c9bfae;
+  padding: 7px 13px;
+  font-size: 13px;
+}
+.show-layout button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+.show-layout button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.show-layout button.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #f2ede4;
+}
+.show-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+/* A miniature tear-sheet card: image beside the same detail lines. */
+.show-cell {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 16px;
+  align-items: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+}
+.show-cell-img {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.show-cell-img img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.show-cell-info {
+  min-width: 0;
+}
+.show-cell-title {
+  font-family: var(--serif);
+  font-size: 21px;
+  line-height: 1.1;
+  margin: 0 0 3px;
+}
+/* Scale the shared slide detail lines down to grid-cell size. */
+.show-cell .slide-cat {
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+.show-cell .slide-vendor {
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.show-cell .slide-specs {
+  gap: 4px;
+  margin: 0 0 8px;
+}
+.show-cell .slide-specs div {
+  grid-template-columns: 90px 1fr;
+  padding-bottom: 3px;
+}
+.show-cell .slide-specs dt {
+  font-size: 10px;
+}
+.show-cell .slide-specs dd {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.show-cell .slide-price {
+  font-size: 19px;
+  margin-top: 4px;
+}
+.show-cell .slide-price-sub {
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   .slide {
     grid-template-columns: 1fr;
