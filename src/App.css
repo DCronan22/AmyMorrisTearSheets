@@ -929,11 +929,12 @@ a.btn {
     margin: 0 auto;
     flex: 0 0 auto;
   }
-  /* Text stand-in when the firm has no logo uploaded. */
+  /* Text stand-in when the firm has no logo uploaded. Sized so the lettering
+     matches the scale of Amy's reference logo (~0.4in cap height). */
   .ts-wordmark {
     margin: 0.2in 0 0;
     font-family: var(--ts-head, var(--serif));
-    font-size: 26pt;
+    font-size: 42pt;
     letter-spacing: 0.08em;
     color: var(--ts-accent, #907c67);
     flex: 0 0 auto;
@@ -1438,7 +1439,7 @@ a.btn {
 }
 .tsp-wordmark {
   font-family: var(--ts-head, var(--serif));
-  font-size: 15px;
+  font-size: 22px;
   letter-spacing: 0.08em;
   color: var(--ts-accent, #6d6047);
   flex: 0 0 auto;

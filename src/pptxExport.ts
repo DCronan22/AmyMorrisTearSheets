@@ -21,7 +21,8 @@ const DETAILS_TOP = 10.99; // .ts-details fixed top edge
 const LOGO_W = 4.72; // .ts-logo width
 const ROOM_GAP = 0.55; // .ts-room margin-top
 const PHOTO_GAP = 0.45; // .ts-photo-wrap vertical margins
-const WORDMARK_H = 0.55; // .ts-wordmark (26pt line) when there's no logo
+const WORDMARK_H = 0.75; // .ts-wordmark (42pt line) when there's no logo
+const WORDMARK_PT = 42; // sized to match the reference logo's lettering
 
 const FONT_PT = 18; // .ts-room / .ts-details font-size
 const LINE_SPACING_PT = FONT_PT * 1.21; // .ts-details line-height
@@ -208,11 +209,12 @@ export async function exportItemsToPptx(
         w: PAGE_W - PAD_SIDE * 2,
         h: WORDMARK_H,
         fontFace: fonts.head,
-        fontSize: 26,
+        fontSize: WORDMARK_PT,
         color: accent,
         charSpacing: 2,
         align: "center",
         valign: "middle",
+        fit: "shrink",
       });
       contentTop += WORDMARK_H;
     }
