@@ -235,6 +235,14 @@ export default function StyleEditor({
                 />{" "}
                 Dimensions
               </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={draft.showRoom}
+                  onChange={(e) => set("showRoom", e.target.checked)}
+                />{" "}
+                Room
+              </label>
             </fieldset>
 
             <div className="style-grid">

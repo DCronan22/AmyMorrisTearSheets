@@ -75,6 +75,7 @@ export interface FirmStyle {
   showPrice: boolean; // include prices on the sheet
   showSku: boolean; // include SKU / model rows
   showDimensions: boolean; // include dimensions rows
+  showRoom: boolean; // include the room label under the logo
   coverTitle: string; // overrides the cover heading (defaults to firm name)
   footerText: string; // footer tagline (defaults to "{firm} Tear Sheets")
 }
@@ -109,17 +110,19 @@ export const FONT_STACKS: Record<
   },
 };
 
-/** A sensible default style, matching the app's original editorial look. */
+/** A sensible default style, matching Amy Morris's original tear sheets
+ *  (taupe #907c67 throughout, no room label) in both export formats. */
 export function defaultFirmStyle(): FirmStyle {
   return {
     logoUrl: "",
-    accentColor: "#6d6047",
-    textColor: "#2b2722",
+    accentColor: "#907c67",
+    textColor: "#907c67",
     font: "classic-serif",
     layout: "list",
     showPrice: true,
     showSku: true,
     showDimensions: true,
+    showRoom: false,
     coverTitle: "",
     footerText: "",
   };
@@ -161,6 +164,7 @@ export function normalizeFirmStyle(raw: unknown): FirmStyle {
     showPrice: bool(r.showPrice, d.showPrice),
     showSku: bool(r.showSku, d.showSku),
     showDimensions: bool(r.showDimensions, d.showDimensions),
+    showRoom: bool(r.showRoom, d.showRoom),
     coverTitle: str(r.coverTitle, d.coverTitle),
     footerText: str(r.footerText, d.footerText),
   };
@@ -343,6 +347,27 @@ export function libraryToItem(li: LibraryItem): Item {
     imageUrl: li.imageUrl,
     productUrl: li.productUrl,
     upholstered: li.upholstered ?? true,
+  };
+}
+
+/**
+ * A physical stock entry in the firm's inventory: the same product spec as a
+ * LibraryItem plus how many units the firm has on hand. Quantity 0 is valid
+ * ("we stock this but have none right now") — removing an entry is always an
+ * explicit delete, never a side effect of stepping the count down.
+ */
+export interface InventoryItem extends LibraryItem {
+  quantity: number;
+}
+
+/**
+ * Turn an inventory entry into a printable/project-style Item. Out-of-stock
+ * entries print as quantity 1 (an Item's quantity is at least 1).
+ */
+export function inventoryToItem(inv: InventoryItem): Item {
+  return {
+    ...libraryToItem(inv),
+    quantity: Math.max(1, inv.quantity),
   };
 }
 

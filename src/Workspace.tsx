@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import "./App.css";
-import type { Firm, Item, LibraryItem, Project } from "./types";
+import type { Firm, InventoryItem, Item, LibraryItem, Project } from "./types";
 import {
   emptyItem,
   emptyProject,
   defaultFirmStyle,
+  inventoryToItem,
   itemToLibrary,
   libraryToItem,
   newId,
@@ -30,11 +31,20 @@ import {
   saveLibraryItem,
   deleteLibraryItem,
 } from "./data/library";
+import {
+  fetchInventory,
+  createInventoryItem,
+  saveInventoryItem,
+  updateInventoryQuantity,
+  deleteInventoryItem,
+} from "./data/inventory";
 import { distinct, projectTotal, formatPrice, toggledSet } from "./util";
 import CatalogFilterBar from "./components/CatalogFilterBar";
 import { useCatalogFilter } from "./components/useCatalogFilter";
 import RoomGroupedGallery from "./components/RoomGroupedGallery";
+import HomePage from "./components/HomePage";
 import LibraryView from "./components/LibraryView";
+import InventoryView from "./components/InventoryView";
 import LibraryPicker from "./components/LibraryPicker";
 import Slideshow from "./components/Slideshow";
 import TearSheetPrint from "./components/TearSheetPrint";
@@ -69,7 +79,13 @@ export default function Workspace({
 
   const [editing, setEditing] = useState<Item | null>(null);
   const [importing, setImporting] = useState(false);
-  const [showIndex, setShowIndex] = useState<number | null>(null);
+  // What presentation mode is showing: a snapshot of the item set (whole
+  // project, selection, or one room), a top-bar title, and where to start.
+  const [showing, setShowing] = useState<{
+    items: Item[];
+    title: string;
+    startIndex: number;
+  } | null>(null);
   const [editingHeader, setEditingHeader] = useState(false);
   const [showStyle, setShowStyle] = useState(false);
   // Optional first-run prompt: shown once per firm that has no style yet, and
@@ -79,8 +95,12 @@ export default function Workspace({
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Which area of the app is on screen. Everyone lands on the home page.
+  const [viewMode, setViewMode] = useState<
+    "home" | "clients" | "library" | "inventory"
+  >("home");
+
   // --- Master library ---
-  const [viewMode, setViewMode] = useState<"clients" | "library">("clients");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -90,6 +110,19 @@ export default function Workspace({
   const [picking, setPicking] = useState(false);
   // Which destination an open ImportPanel feeds: the client or the library.
   const [importTarget, setImportTarget] = useState<"client" | "library">("client");
+
+  // --- Inventory (physical stock) ---
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [inventorySelected, setInventorySelected] = useState<Set<string>>(
+    new Set()
+  );
+  const [editingInventory, setEditingInventory] = useState<Item | null>(null);
+  // "Add from database" picker opened from the Inventory view.
+  const [pickingForInventory, setPickingForInventory] = useState(false);
+
   const [flash, setFlash] = useState<string | null>(null);
   // Guards against double-clicking the PowerPoint export while images fetch.
   const [exportingPptx, setExportingPptx] = useState(false);
@@ -547,6 +580,210 @@ export default function Workspace({
     void ensureLibrary();
   }
 
+  // --- Inventory (physical stock) --------------------------------------------
+
+  // Fetch the firm's inventory and put it in state. Callers that need the
+  // fresh list synchronously (dedup checks) use the returned array.
+  async function loadInventory(): Promise<InventoryItem[]> {
+    const items = await fetchInventory(firm.id);
+    setInventory(items);
+    setInventoryLoaded(true);
+    return items;
+  }
+
+  // Load the inventory the first time it's needed (inventory tab / add-to).
+  async function ensureInventory() {
+    if (inventoryLoaded || inventoryLoading) return;
+    setInventoryLoading(true);
+    setInventoryError(null);
+    try {
+      await loadInventory();
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not load the inventory."
+      );
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  function openInventory() {
+    setViewMode("inventory");
+    void ensureInventory();
+  }
+
+  const toggleInventorySelect = useCallback(
+    (id: string) => setInventorySelected((prev) => toggledSet(prev, id)),
+    []
+  );
+
+  // Save an inventory draft (the ItemEditor works on an Item; convert back).
+  // The on-hand quantity is edited via the card stepper, not the editor, so
+  // updates keep the entry's existing quantity; new entries start at 1.
+  async function saveInventoryDraft(draft: Item) {
+    setInventoryError(null);
+    const existing = inventory.find((i) => i.id === draft.id);
+    try {
+      if (existing) {
+        const saved = await saveInventoryItem({
+          id: draft.id,
+          ...itemToLibrary(draft),
+          quantity: existing.quantity,
+        });
+        setInventory((is) => is.map((i) => (i.id === saved.id ? saved : i)));
+      } else {
+        const saved = await createInventoryItem(firm.id, itemToLibrary(draft));
+        setInventory((is) => [saved, ...is]);
+      }
+      setEditingInventory(null);
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not save the inventory entry."
+      );
+    }
+  }
+
+  // Set an entry's on-hand count from the card stepper. Optimistic — the
+  // stepper should feel instant — and rolled back if the save fails. Zero is
+  // allowed ("out of stock"); removing an entry is always an explicit delete.
+  async function setInventoryQuantity(inv: InventoryItem, quantity: number) {
+    const qty = Math.max(0, quantity);
+    if (qty === inv.quantity) return;
+    setInventoryError(null);
+    setInventory((is) =>
+      is.map((i) => (i.id === inv.id ? { ...i, quantity: qty } : i))
+    );
+    try {
+      await updateInventoryQuantity(inv.id, qty);
+    } catch (e) {
+      setInventory((is) =>
+        is.map((i) => (i.id === inv.id ? { ...i, quantity: inv.quantity } : i))
+      );
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not update the quantity."
+      );
+    }
+  }
+
+  async function removeInventoryItem(id: string) {
+    const ok = await confirm({
+      title: "Remove from inventory?",
+      message:
+        "Remove this entry from your inventory? Your database and client projects are unaffected.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
+    setInventoryError(null);
+    try {
+      await deleteInventoryItem(id);
+      setInventory((is) => is.filter((i) => i.id !== id));
+      setInventorySelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setEditingInventory(null);
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not remove the inventory entry."
+      );
+    }
+  }
+
+  // Bulk-remove the selected inventory entries. Mirrors removeLibrarySelected:
+  // deletes run independently so one failure doesn't strand the others.
+  async function removeInventorySelected() {
+    const ids = [...inventorySelected].filter((id) =>
+      inventory.some((i) => i.id === id)
+    );
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: `Remove ${ids.length} from inventory?`,
+      message: `Remove the ${ids.length} selected entr${
+        ids.length === 1 ? "y" : "ies"
+      } from your inventory? Your database and client projects are unaffected.`,
+      confirmLabel: `Remove ${ids.length}`,
+      danger: true,
+    });
+    if (!ok) return;
+    setInventoryError(null);
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteInventoryItem(id))
+    );
+    const removed = new Set(
+      ids.filter((_, i) => results[i].status === "fulfilled")
+    );
+    setInventory((is) => is.filter((i) => !removed.has(i.id)));
+    setInventorySelected(
+      (prev) => new Set([...prev].filter((id) => !removed.has(id)))
+    );
+    if (results.some((r) => r.status === "rejected")) {
+      setInventoryError("Some entries couldn't be removed. Please try again.");
+    }
+  }
+
+  /**
+   * Copy database pieces into the inventory. A piece that's already stocked
+   * (matched by name+vendor+SKU) has its quantity increased by one instead of
+   * being duplicated; anything new is added with quantity 1.
+   */
+  async function addLibraryItemsToInventory(libItems: LibraryItem[]) {
+    if (!libItems.length) return;
+    setPickingForInventory(false);
+    setSaveError(null);
+    try {
+      // Dedup against the live inventory; load it first if needed.
+      const current = inventoryLoaded ? inventory : await loadInventory();
+      const byKey = new Map(current.map((inv) => [catalogKey(inv), inv]));
+      let next = current;
+      let added = 0;
+      let increased = 0;
+      for (const li of libItems) {
+        const { id: _omit, ...spec } = li;
+        void _omit;
+        const existing = byKey.get(catalogKey(li));
+        if (existing) {
+          const saved = await updateInventoryQuantity(
+            existing.id,
+            existing.quantity + 1
+          );
+          byKey.set(catalogKey(saved), saved);
+          next = next.map((i) => (i.id === saved.id ? saved : i));
+          increased++;
+        } else {
+          const saved = await createInventoryItem(firm.id, spec, 1);
+          byKey.set(catalogKey(saved), saved);
+          next = [saved, ...next];
+          added++;
+        }
+      }
+      setInventory(next);
+      const parts: string[] = [];
+      if (added) parts.push(`${added} added`);
+      if (increased) parts.push(`${increased} already stocked — quantity increased`);
+      flashMsg(`Inventory updated: ${parts.join("; ")}.`);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Could not add to the inventory."
+      );
+    }
+  }
+
+  // From the Database tab: copy the current selection into the inventory.
+  function addLibrarySelectionToInventory() {
+    const chosen = library.filter((l) => librarySelected.has(l.id));
+    if (!chosen.length) return;
+    void addLibraryItemsToInventory(chosen);
+    setLibrarySelected(new Set());
+  }
+
+  // From the Inventory tab: open the database picker.
+  function openInventoryPicker() {
+    setPickingForInventory(true);
+    void ensureLibrary();
+  }
+
   // Quick room assignment from the grouped client view.
   const setItemRoom = useCallback(
     (item: Item, room: string) => {
@@ -558,15 +795,53 @@ export default function Workspace({
     [applyProjectChange]
   );
 
-  // Open the slideshow at the clicked item's position in the full project.
+  // --- Presenting -----------------------------------------------------------
+
+  // Rooms in on-screen order (first seen in the item list), matching the
+  // grouped gallery — `rooms` above is alphabetical for the filter dropdown.
+  const presentRooms = useMemo(() => {
+    const seen: string[] = [];
+    for (const it of project?.items ?? EMPTY_ITEMS) {
+      const room = it.room.trim();
+      if (room && !seen.includes(room)) seen.push(room);
+    }
+    return seen;
+  }, [project]);
+
+  // Present the whole project, starting at the given item (a clicked card).
   const presentItem = useCallback(
     (item: Item) => {
       if (!project) return;
       const realIndex = project.items.findIndex((x) => x.id === item.id);
-      setShowIndex(realIndex >= 0 ? realIndex : 0);
+      setShowing({
+        items: project.items,
+        title: [project.name, project.client].filter(Boolean).join(" · "),
+        startIndex: realIndex >= 0 ? realIndex : 0,
+      });
     },
     [project]
   );
+
+  function presentAll() {
+    if (!project || project.items.length === 0) return;
+    setShowing({
+      items: project.items,
+      title: [project.name, project.client].filter(Boolean).join(" · "),
+      startIndex: 0,
+    });
+  }
+
+  function presentSelected() {
+    if (selectedItems.length === 0) return;
+    setShowing({ items: selectedItems, title: "Selection", startIndex: 0 });
+  }
+
+  function presentRoom(room: string) {
+    if (!project) return;
+    const items = project.items.filter((it) => it.room.trim() === room);
+    if (items.length === 0) return;
+    setShowing({ items, title: room, startIndex: 0 });
+  }
 
   async function createProject() {
     setSaveError(null);
@@ -745,152 +1020,230 @@ export default function Workspace({
     <>
       <div className="app no-print" style={appVars}>
         <header className="topbar">
-          <div className="brand">
-            <span className="brand-mark">{initials}</span>
-            <div>
-              <div className="brand-name">{firm.name}</div>
-              <div className="brand-sub">Tear Sheets</div>
+          {/* Row 1: brand · navigation · overflow menu. */}
+          <div className="topbar-row">
+            <div className="brand">
+              <span className="brand-mark">{initials}</span>
+              <div>
+                <div className="brand-name">{firm.name}</div>
+                <div className="brand-sub">Tear Sheets</div>
+              </div>
             </div>
-          </div>
 
-          <div className="toolbar">
-            <div className="view-toggle" role="tablist">
+            <div className="topbar-right">
+              <nav className="view-toggle" aria-label="Areas">
+              <button
+                className={viewMode === "home" ? "active" : ""}
+                aria-current={viewMode === "home" ? "page" : undefined}
+                onClick={() => setViewMode("home")}
+              >
+                Home
+              </button>
               <button
                 className={viewMode === "clients" ? "active" : ""}
+                aria-current={viewMode === "clients" ? "page" : undefined}
                 onClick={() => setViewMode("clients")}
               >
                 Clients
               </button>
               <button
                 className={viewMode === "library" ? "active" : ""}
+                aria-current={viewMode === "library" ? "page" : undefined}
                 onClick={openLibrary}
               >
                 Database
               </button>
-            </div>
-            {viewMode === "clients" && (
-              <>
-                <span className="divider" />
-                <select
-                  className="project-select"
-                  value={project.id}
-                  onChange={(e) => setActiveProjectId(e.target.value)}
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn ghost" onClick={createProject}>
-                  + Project
-                </button>
-                <span className="divider" />
+              <button
+                className={viewMode === "inventory" ? "active" : ""}
+                aria-current={viewMode === "inventory" ? "page" : undefined}
+                onClick={openInventory}
+              >
+                Inventory
+              </button>
+              </nav>
+              <span className="divider" />
+              {/* Secondary / rare actions */}
+              <div className="menu">
                 <button
-                  className="btn"
-                  onClick={openPicker}
-                  title="Add pieces from your master database"
+                  className="btn ghost"
+                  aria-label="More options"
+                  title="More options"
                 >
-                  ＋ From database
+                  ⋯
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setImportTarget("client");
-                    setImporting(true);
-                  }}
-                >
-                  ⬆ Import
-                </button>
-                <button className="btn" onClick={() => setEditing(emptyItem())}>
-                  + Add item
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => project.items.length && setShowIndex(0)}
-                  disabled={!project.items.length}
-                >
-                  ▶ Present
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => print()}
-                  disabled={!project.items.length}
-                >
-                  🖶 Print / PDF
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => print(selectedItems)}
-                  disabled={selectedCount === 0}
-                  title="Print only the selected items"
-                >
-                  🖶 Print selected ({selectedCount})
-                </button>
-              </>
-            )}
-            <span className="divider" />
-            <div className="menu">
-              <button className="btn ghost">⋯</button>
-              <div className="menu-list">
-                <button
-                  onClick={() =>
-                    exportItemsToSpreadsheet(project.items, project.name)
-                  }
-                >
-                  Export items (.xlsx)
-                </button>
-                <button
-                  disabled={selectedCount === 0}
-                  onClick={() =>
-                    exportItemsToSpreadsheet(selectedItems, project.name)
-                  }
-                >
-                  Export selected ({selectedCount}) (.xlsx)
-                </button>
-                <button
-                  disabled={project.items.length === 0 || exportingPptx}
-                  onClick={() => exportPowerPoint(project.items, project.name)}
-                >
-                  Export PowerPoint (.pptx)
-                </button>
-                <button
-                  disabled={selectedCount === 0 || exportingPptx}
-                  onClick={() => exportPowerPoint(selectedItems, project.name)}
-                >
-                  Export selected ({selectedCount}) (.pptx)
-                </button>
-                <button onClick={toggleShowVendor}>
-                  {showVendor ? "✓ " : ""}Show vendor on cards
-                </button>
-                <button
-                  onClick={() =>
-                    exportProjectFile({
-                      version: 1,
-                      projects,
-                      activeProjectId: project.id,
-                    })
-                  }
-                >
-                  Export backup (.json)
-                </button>
-                <button onClick={() => restoreInput.current?.click()}>
-                  Restore backup (.json)…
-                </button>
-                <button onClick={duplicateProject}>Duplicate this project</button>
-                <button onClick={() => setShowStyle(true)}>
-                  Tear sheet style…
-                </button>
-                <button onClick={() => removeProject(project.id)}>
-                  Delete this project
-                </button>
-                {isPlatformAdmin && (
-                  <button onClick={onOpenAdmin}>Platform admin…</button>
-                )}
-                <button onClick={onSignOut}>Sign out ({userEmail})</button>
+                <div className="menu-list">
+                  <button onClick={toggleShowVendor}>
+                    {showVendor ? "✓ " : ""}Show vendor on cards
+                  </button>
+                  <button onClick={() => setShowStyle(true)}>
+                    Tear sheet style…
+                  </button>
+                  <hr className="menu-sep" />
+                  <button onClick={duplicateProject}>
+                    Duplicate this project
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => removeProject(project.id)}
+                  >
+                    Delete this project
+                  </button>
+                  <hr className="menu-sep" />
+                  <button
+                    onClick={() =>
+                      exportProjectFile({
+                        version: 1,
+                        projects,
+                        activeProjectId: project.id,
+                      })
+                    }
+                  >
+                    Export backup (.json)
+                  </button>
+                  <button onClick={() => restoreInput.current?.click()}>
+                    Restore backup (.json)…
+                  </button>
+                  <hr className="menu-sep" />
+                  {isPlatformAdmin && (
+                    <button onClick={onOpenAdmin}>Platform admin…</button>
+                  )}
+                  <button onClick={onSignOut}>Sign out ({userEmail})</button>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Row 2 (Clients only): project switcher · content actions ·
+              output actions (Present / Print / Export). */}
+          {viewMode === "clients" && (
+            <div className="toolbar">
+                <div className="toolbar-group">
+                  <select
+                    className="project-select"
+                    value={project.id}
+                    onChange={(e) => setActiveProjectId(e.target.value)}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn ghost"
+                    onClick={createProject}
+                    title="Create a new client project"
+                  >
+                    ＋ New project
+                  </button>
+                </div>
+                <span className="divider" />
+                {/* Content actions — one primary per toolbar */}
+                <div className="toolbar-group">
+                  <button
+                    className="btn primary"
+                    onClick={() => setEditing(emptyItem())}
+                  >
+                    ＋ Add item
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={openPicker}
+                    title="Add pieces from your master database"
+                  >
+                    From database
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setImportTarget("client");
+                      setImporting(true);
+                    }}
+                    title="Import items from a spreadsheet or PowerPoint file"
+                  >
+                    Import
+                  </button>
+                </div>
+                <span className="spacer" />
+                {/* Output actions: Present, Print, Export */}
+                <div className="toolbar-group">
+                  <div className="menu">
+                    <button className="btn" disabled={!project.items.length}>
+                      Present ▾
+                    </button>
+                    <div className="menu-list">
+                      <button
+                        disabled={!project.items.length}
+                        onClick={presentAll}
+                      >
+                        Present all
+                      </button>
+                      {selectedCount > 0 && (
+                        <button onClick={presentSelected}>
+                          Present selected ({selectedCount})
+                        </button>
+                      )}
+                      {presentRooms.length > 0 && <hr className="menu-sep" />}
+                      {presentRooms.map((room) => (
+                        <button key={room} onClick={() => presentRoom(room)}>
+                          Present room: {room}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    className="btn"
+                    onClick={() => print()}
+                    disabled={!project.items.length}
+                    title="Print all tear sheets, or save them as a PDF"
+                  >
+                    Print
+                  </button>
+                  <div className="menu">
+                    <button className="btn" disabled={!project.items.length}>
+                      Export ▾
+                    </button>
+                    <div className="menu-list">
+                      <button
+                        disabled={project.items.length === 0}
+                        onClick={() =>
+                          exportItemsToSpreadsheet(project.items, project.name)
+                        }
+                      >
+                        Excel spreadsheet (.xlsx)
+                      </button>
+                      <button
+                        disabled={selectedCount === 0}
+                        onClick={() =>
+                          exportItemsToSpreadsheet(selectedItems, project.name)
+                        }
+                      >
+                        Excel — selected items
+                        {selectedCount > 0 ? ` (${selectedCount})` : ""}
+                      </button>
+                      <hr className="menu-sep" />
+                      <button
+                        disabled={project.items.length === 0 || exportingPptx}
+                        onClick={() =>
+                          exportPowerPoint(project.items, project.name)
+                        }
+                      >
+                        PowerPoint (.pptx)
+                      </button>
+                      <button
+                        disabled={selectedCount === 0 || exportingPptx}
+                        onClick={() =>
+                          exportPowerPoint(selectedItems, project.name)
+                        }
+                      >
+                        PowerPoint — selected items
+                        {selectedCount > 0 ? ` (${selectedCount})` : ""}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+            </div>
+          )}
         </header>
 
         {saveError && <p className="status-err save-banner">{saveError}</p>}
@@ -908,7 +1261,17 @@ export default function Workspace({
           }}
         />
 
-        {viewMode === "library" ? (
+        {viewMode === "home" ? (
+          <HomePage
+            firmName={firm.name}
+            projectCount={projects.length}
+            databaseCount={libraryLoaded ? library.length : null}
+            inventoryCount={inventoryLoaded ? inventory.length : null}
+            onOpenClients={() => setViewMode("clients")}
+            onOpenDatabase={openLibrary}
+            onOpenInventory={openInventory}
+          />
+        ) : viewMode === "library" ? (
           <LibraryView
             library={library}
             loading={libraryLoading}
@@ -924,8 +1287,29 @@ export default function Workspace({
             }}
             onPrint={(items) => print(items.map(libraryToItem))}
             onDeleteSelected={removeLibrarySelected}
+            onClearSelection={() => setLibrarySelected(new Set())}
             onAddSelectedToClient={addLibrarySelectionToClient}
+            onAddSelectedToInventory={addLibrarySelectionToInventory}
             activeClientName={project.name}
+            showVendor={showVendor}
+          />
+        ) : viewMode === "inventory" ? (
+          <InventoryView
+            inventory={inventory}
+            loading={inventoryLoading}
+            error={inventoryError}
+            selected={inventorySelected}
+            onToggleSelect={toggleInventorySelect}
+            onAdd={() => setEditingInventory(emptyItem())}
+            onEdit={(inv) =>
+              setEditingInventory({ ...inventoryToItem(inv), id: inv.id })
+            }
+            onDelete={removeInventoryItem}
+            onSetQuantity={(inv, qty) => void setInventoryQuantity(inv, qty)}
+            onAddFromDatabase={openInventoryPicker}
+            onPrint={(items) => print(items.map(inventoryToItem))}
+            onDeleteSelected={removeInventorySelected}
+            onClearSelection={() => setInventorySelected(new Set())}
             showVendor={showVendor}
           />
         ) : (
@@ -981,32 +1365,49 @@ export default function Workspace({
           </span>
         </CatalogFilterBar>
 
-        <section className="selectbar">
-          <button
-            className="btn ghost small"
-            onClick={selectAllFiltered}
-            disabled={filtered.length === 0 || allFilteredSelected}
-          >
-            Select all{filtered.length ? ` (${filtered.length})` : ""}
-          </button>
-          <button
-            className="btn ghost small"
-            onClick={clearSelection}
-            disabled={selectedCount === 0}
-          >
-            Clear
-          </button>
-          <button
-            className="btn ghost small danger"
-            onClick={deleteSelected}
-            disabled={selectedCount === 0}
-            title="Delete the selected items from this project"
-          >
-            Delete selected ({selectedCount})
-          </button>
-          <span className="muted small select-count">
-            {selectedCount} selected
-          </span>
+        {/* Selection strip: a quiet "Select all" when nothing is selected;
+            count + batch actions + Clear selection once items are chosen. */}
+        <section
+          className={`selectbar${selectedCount > 0 ? " has-selection" : ""}`}
+        >
+          {selectedCount === 0 ? (
+            <button
+              className="btn ghost small"
+              onClick={selectAllFiltered}
+              disabled={filtered.length === 0}
+            >
+              Select all{filtered.length ? ` (${filtered.length})` : ""}
+            </button>
+          ) : (
+            <>
+              <span className="selectbar-count">{selectedCount} selected</span>
+              <button
+                className="btn ghost small"
+                onClick={selectAllFiltered}
+                disabled={allFilteredSelected}
+              >
+                Select all{filtered.length ? ` (${filtered.length})` : ""}
+              </button>
+              <button
+                className="btn ghost small"
+                onClick={() => print(selectedItems)}
+                title="Print only the selected items"
+              >
+                Print selected
+              </button>
+              <button
+                className="btn ghost small danger"
+                onClick={deleteSelected}
+                title="Delete the selected items from this project"
+              >
+                Delete selected
+              </button>
+              <span className="spacer" />
+              <button className="btn ghost small" onClick={clearSelection}>
+                Clear selection
+              </button>
+            </>
+          )}
         </section>
 
         <main className="content">
@@ -1067,6 +1468,24 @@ export default function Workspace({
           }
         />
       )}
+      {editingInventory && (
+        <ItemEditor
+          item={editingInventory}
+          libraryMode
+          heading={
+            inventory.some((i) => i.id === editingInventory.id)
+              ? "Edit inventory item"
+              : "New inventory item"
+          }
+          onSave={saveInventoryDraft}
+          onClose={() => setEditingInventory(null)}
+          onDelete={
+            inventory.some((i) => i.id === editingInventory.id)
+              ? removeInventoryItem
+              : undefined
+          }
+        />
+      )}
       {picking && (
         <LibraryPicker
           library={library}
@@ -1077,6 +1496,16 @@ export default function Workspace({
           onClose={() => setPicking(false)}
         />
       )}
+      {pickingForInventory && (
+        <LibraryPicker
+          library={library}
+          loading={libraryLoading}
+          error={libraryError}
+          clientName="your inventory"
+          onConfirm={(items) => void addLibraryItemsToInventory(items)}
+          onClose={() => setPickingForInventory(false)}
+        />
+      )}
       {importing && (
         <ImportPanel
           onImport={routeImport}
@@ -1085,12 +1514,13 @@ export default function Workspace({
           destinationName={importTarget === "client" ? project.name : undefined}
         />
       )}
-      {showIndex !== null && (
+      {showing && (
         <Slideshow
-          project={project}
-          startIndex={showIndex}
+          items={showing.items}
+          title={showing.title}
+          startIndex={showing.startIndex}
           showVendor={showVendor}
-          onClose={() => setShowIndex(null)}
+          onClose={() => setShowing(null)}
         />
       )}
       {styleModals}

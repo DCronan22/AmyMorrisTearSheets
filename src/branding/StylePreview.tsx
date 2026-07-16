@@ -31,7 +31,7 @@ export default function StylePreview({
       ) : (
         <div className="tsp-wordmark">{style.coverTitle.trim() || firmName}</div>
       )}
-      <div className="tsp-room">Living Room</div>
+      {style.showRoom && <div className="tsp-room">Living Room</div>}
       <div className="tsp-img" />
       <div className="tsp-details">
         <div>Lawson Sofa</div>

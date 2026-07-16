@@ -19,8 +19,12 @@ interface Props {
   onPrint: (items: LibraryItem[]) => void;
   /** Delete the selected database items (with confirmation). */
   onDeleteSelected: () => void;
+  /** Deselect everything (the selection strip's "Clear selection"). */
+  onClearSelection: () => void;
   /** Copy the selected library items into the open client project. */
   onAddSelectedToClient: () => void;
+  /** Copy the selected library items into the firm's inventory. */
+  onAddSelectedToInventory: () => void;
   /** Name of the active client project, for the "add to" button label. */
   activeClientName: string | null;
   /** Show the vendor on each card (visual only). */
@@ -43,7 +47,9 @@ export default function LibraryView({
   onImport,
   onPrint,
   onDeleteSelected,
+  onClearSelection,
   onAddSelectedToClient,
+  onAddSelectedToInventory,
   activeClientName,
   showVendor = true,
 }: Props) {
@@ -66,12 +72,17 @@ export default function LibraryView({
           </p>
         </div>
         <div className="library-actions">
-          <button className="btn" onClick={onImport}>
-            ⬆ Import
+          <button className="btn primary" onClick={onAdd}>
+            ＋ Add to database
           </button>
-          <button className="btn" onClick={onAdd}>
-            + Add to database
+          <button
+            className="btn"
+            onClick={onImport}
+            title="Import items from a spreadsheet or PowerPoint file"
+          >
+            Import
           </button>
+          <span className="divider" />
           <button
             className="btn"
             onClick={() => onPrint(filtered)}
@@ -82,38 +93,7 @@ export default function LibraryView({
                 : "Print every database item as a tear sheet"
             }
           >
-            🖶 Print{hasFilter ? ` (${filtered.length})` : ""}
-          </button>
-          <button
-            className="btn"
-            onClick={() =>
-              onPrint(library.filter((li) => selected.has(li.id)))
-            }
-            disabled={selectedCount === 0}
-            title="Print only the selected items as tear sheets"
-          >
-            🖶 Print selected ({selectedCount})
-          </button>
-          <button
-            className="btn danger"
-            onClick={onDeleteSelected}
-            disabled={selectedCount === 0}
-            title="Delete the selected items from your database"
-          >
-            Delete selected ({selectedCount})
-          </button>
-          <button
-            className="btn primary"
-            onClick={onAddSelectedToClient}
-            disabled={selectedCount === 0 || !activeClientName}
-            title={
-              activeClientName
-                ? `Copy selected into ${activeClientName}`
-                : "Open a client first"
-            }
-          >
-            Add {selectedCount > 0 ? `${selectedCount} ` : ""}to{" "}
-            {activeClientName ?? "client"}
+            Print{hasFilter ? ` (${filtered.length})` : ""}
           </button>
         </div>
       </section>
@@ -128,6 +108,50 @@ export default function LibraryView({
           {filtered.length} of {library.length}
         </span>
       </CatalogFilterBar>
+
+      {/* Batch actions for the current selection. */}
+      {selectedCount > 0 && (
+        <section className="selectbar has-selection">
+          <span className="selectbar-count">{selectedCount} selected</span>
+          <button
+            className="btn small primary"
+            onClick={onAddSelectedToClient}
+            disabled={!activeClientName}
+            title={
+              activeClientName
+                ? `Copy the selected pieces into ${activeClientName}`
+                : "Open a client first"
+            }
+          >
+            Add to {activeClientName ?? "client"}
+          </button>
+          <button
+            className="btn ghost small"
+            onClick={onAddSelectedToInventory}
+            title="Copy the selected pieces into your inventory (pieces already stocked have their quantity increased)"
+          >
+            Add to inventory
+          </button>
+          <button
+            className="btn ghost small"
+            onClick={() => onPrint(library.filter((li) => selected.has(li.id)))}
+            title="Print only the selected items as tear sheets"
+          >
+            Print selected
+          </button>
+          <button
+            className="btn ghost small danger"
+            onClick={onDeleteSelected}
+            title="Delete the selected items from your database"
+          >
+            Delete selected
+          </button>
+          <span className="spacer" />
+          <button className="btn ghost small" onClick={onClearSelection}>
+            Clear selection
+          </button>
+        </section>
+      )}
 
       {error && <p className="status-err">{error}</p>}
 

@@ -49,7 +49,9 @@ function TearSheetPrint({ project, style, firmName, items }: Props) {
             <p className="ts-wordmark">{wordmark}</p>
           )}
 
-          {it.room.trim() && <p className="ts-room">{it.room.trim()}</p>}
+          {style.showRoom && it.room.trim() && (
+            <p className="ts-room">{it.room.trim()}</p>
+          )}
 
           <div className="ts-photo-wrap">
             <img
