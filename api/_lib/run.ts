@@ -40,6 +40,20 @@ function missingKeyCount(f: ExtractedFields): number {
   }).length;
 }
 
+// When none of these came through, the page almost certainly renders its
+// details with scripts — point the user at the screenshot path instead of
+// leaving them with a mystery half-empty form.
+const SPEC_FIELDS: (keyof ExtractedFields)[] = ["price", "sku", "dimensions"];
+function specsTip(f: ExtractedFields): string | null {
+  const allEmpty = SPEC_FIELDS.every((k) => {
+    const v = f[k];
+    return v === undefined || v === null || v === "";
+  });
+  return allEmpty
+    ? "This page doesn't share pricing or specs with the importer — for a fuller auto-fill, upload a screenshot of the product page instead."
+    : null;
+}
+
 /** Merge AI fields into the structured result: structured wins; AI fills blanks. */
 function fillBlanks(
   structured: ExtractedFields,
@@ -106,20 +120,25 @@ export async function runExtraction(
         const aiFields = await aiExtractFromText(htmlToReadableText(html));
         const merged = fillBlanks(result.fields, aiFields);
         merged.productUrl = result.fields.productUrl ?? finalUrl;
+        const warnings = hasData(merged)
+          ? []
+          : ["Couldn't find product details on that page."];
+        const tip = specsTip(merged);
+        if (tip) warnings.push(tip);
         return {
           status: 200,
           payload: {
             fields: merged,
             source: hasData(result.fields) ? "structured" : "ai",
-            warnings: hasData(merged)
-              ? []
-              : ["Couldn't find product details on that page."],
+            warnings,
           },
         };
       } catch {
         // Fall through to the (improved) structured result.
       }
     }
+    const tip = specsTip(result.fields);
+    if (tip) result.warnings.push(tip);
     return { status: 200, payload: result };
   }
 
