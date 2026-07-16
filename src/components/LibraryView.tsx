@@ -21,6 +21,8 @@ interface Props {
   onDeleteSelected: () => void;
   /** Copy the selected library items into the open client project. */
   onAddSelectedToClient: () => void;
+  /** Copy the selected library items into the firm's inventory. */
+  onAddSelectedToInventory: () => void;
   /** Name of the active client project, for the "add to" button label. */
   activeClientName: string | null;
   /** Show the vendor on each card (visual only). */
@@ -44,6 +46,7 @@ export default function LibraryView({
   onPrint,
   onDeleteSelected,
   onAddSelectedToClient,
+  onAddSelectedToInventory,
   activeClientName,
   showVendor = true,
 }: Props) {
@@ -101,6 +104,14 @@ export default function LibraryView({
             title="Delete the selected items from your database"
           >
             Delete selected ({selectedCount})
+          </button>
+          <button
+            className="btn"
+            onClick={onAddSelectedToInventory}
+            disabled={selectedCount === 0}
+            title="Copy the selected pieces into your inventory (pieces already stocked have their quantity increased)"
+          >
+            Add {selectedCount > 0 ? `${selectedCount} ` : ""}to inventory
           </button>
           <button
             className="btn primary"

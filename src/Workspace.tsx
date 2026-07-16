@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import "./App.css";
-import type { Firm, Item, LibraryItem, Project } from "./types";
+import type { Firm, InventoryItem, Item, LibraryItem, Project } from "./types";
 import {
   emptyItem,
   emptyProject,
   defaultFirmStyle,
+  inventoryToItem,
   itemToLibrary,
   libraryToItem,
   newId,
@@ -30,11 +31,20 @@ import {
   saveLibraryItem,
   deleteLibraryItem,
 } from "./data/library";
+import {
+  fetchInventory,
+  createInventoryItem,
+  saveInventoryItem,
+  updateInventoryQuantity,
+  deleteInventoryItem,
+} from "./data/inventory";
 import { distinct, projectTotal, formatPrice, toggledSet } from "./util";
 import CatalogFilterBar from "./components/CatalogFilterBar";
 import { useCatalogFilter } from "./components/useCatalogFilter";
 import RoomGroupedGallery from "./components/RoomGroupedGallery";
+import HomePage from "./components/HomePage";
 import LibraryView from "./components/LibraryView";
+import InventoryView from "./components/InventoryView";
 import LibraryPicker from "./components/LibraryPicker";
 import Slideshow from "./components/Slideshow";
 import TearSheetPrint from "./components/TearSheetPrint";
@@ -79,8 +89,12 @@ export default function Workspace({
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Which area of the app is on screen. Everyone lands on the home page.
+  const [viewMode, setViewMode] = useState<
+    "home" | "clients" | "library" | "inventory"
+  >("home");
+
   // --- Master library ---
-  const [viewMode, setViewMode] = useState<"clients" | "library">("clients");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -90,6 +104,19 @@ export default function Workspace({
   const [picking, setPicking] = useState(false);
   // Which destination an open ImportPanel feeds: the client or the library.
   const [importTarget, setImportTarget] = useState<"client" | "library">("client");
+
+  // --- Inventory (physical stock) ---
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [inventorySelected, setInventorySelected] = useState<Set<string>>(
+    new Set()
+  );
+  const [editingInventory, setEditingInventory] = useState<Item | null>(null);
+  // "Add from database" picker opened from the Inventory view.
+  const [pickingForInventory, setPickingForInventory] = useState(false);
+
   const [flash, setFlash] = useState<string | null>(null);
   // Guards against double-clicking the PowerPoint export while images fetch.
   const [exportingPptx, setExportingPptx] = useState(false);
@@ -547,6 +574,210 @@ export default function Workspace({
     void ensureLibrary();
   }
 
+  // --- Inventory (physical stock) --------------------------------------------
+
+  // Fetch the firm's inventory and put it in state. Callers that need the
+  // fresh list synchronously (dedup checks) use the returned array.
+  async function loadInventory(): Promise<InventoryItem[]> {
+    const items = await fetchInventory(firm.id);
+    setInventory(items);
+    setInventoryLoaded(true);
+    return items;
+  }
+
+  // Load the inventory the first time it's needed (inventory tab / add-to).
+  async function ensureInventory() {
+    if (inventoryLoaded || inventoryLoading) return;
+    setInventoryLoading(true);
+    setInventoryError(null);
+    try {
+      await loadInventory();
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not load the inventory."
+      );
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  function openInventory() {
+    setViewMode("inventory");
+    void ensureInventory();
+  }
+
+  const toggleInventorySelect = useCallback(
+    (id: string) => setInventorySelected((prev) => toggledSet(prev, id)),
+    []
+  );
+
+  // Save an inventory draft (the ItemEditor works on an Item; convert back).
+  // The on-hand quantity is edited via the card stepper, not the editor, so
+  // updates keep the entry's existing quantity; new entries start at 1.
+  async function saveInventoryDraft(draft: Item) {
+    setInventoryError(null);
+    const existing = inventory.find((i) => i.id === draft.id);
+    try {
+      if (existing) {
+        const saved = await saveInventoryItem({
+          id: draft.id,
+          ...itemToLibrary(draft),
+          quantity: existing.quantity,
+        });
+        setInventory((is) => is.map((i) => (i.id === saved.id ? saved : i)));
+      } else {
+        const saved = await createInventoryItem(firm.id, itemToLibrary(draft));
+        setInventory((is) => [saved, ...is]);
+      }
+      setEditingInventory(null);
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not save the inventory entry."
+      );
+    }
+  }
+
+  // Set an entry's on-hand count from the card stepper. Optimistic — the
+  // stepper should feel instant — and rolled back if the save fails. Zero is
+  // allowed ("out of stock"); removing an entry is always an explicit delete.
+  async function setInventoryQuantity(inv: InventoryItem, quantity: number) {
+    const qty = Math.max(0, quantity);
+    if (qty === inv.quantity) return;
+    setInventoryError(null);
+    setInventory((is) =>
+      is.map((i) => (i.id === inv.id ? { ...i, quantity: qty } : i))
+    );
+    try {
+      await updateInventoryQuantity(inv.id, qty);
+    } catch (e) {
+      setInventory((is) =>
+        is.map((i) => (i.id === inv.id ? { ...i, quantity: inv.quantity } : i))
+      );
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not update the quantity."
+      );
+    }
+  }
+
+  async function removeInventoryItem(id: string) {
+    const ok = await confirm({
+      title: "Remove from inventory?",
+      message:
+        "Remove this entry from your inventory? Your database and client projects are unaffected.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
+    setInventoryError(null);
+    try {
+      await deleteInventoryItem(id);
+      setInventory((is) => is.filter((i) => i.id !== id));
+      setInventorySelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setEditingInventory(null);
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not remove the inventory entry."
+      );
+    }
+  }
+
+  // Bulk-remove the selected inventory entries. Mirrors removeLibrarySelected:
+  // deletes run independently so one failure doesn't strand the others.
+  async function removeInventorySelected() {
+    const ids = [...inventorySelected].filter((id) =>
+      inventory.some((i) => i.id === id)
+    );
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: `Remove ${ids.length} from inventory?`,
+      message: `Remove the ${ids.length} selected entr${
+        ids.length === 1 ? "y" : "ies"
+      } from your inventory? Your database and client projects are unaffected.`,
+      confirmLabel: `Remove ${ids.length}`,
+      danger: true,
+    });
+    if (!ok) return;
+    setInventoryError(null);
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteInventoryItem(id))
+    );
+    const removed = new Set(
+      ids.filter((_, i) => results[i].status === "fulfilled")
+    );
+    setInventory((is) => is.filter((i) => !removed.has(i.id)));
+    setInventorySelected(
+      (prev) => new Set([...prev].filter((id) => !removed.has(id)))
+    );
+    if (results.some((r) => r.status === "rejected")) {
+      setInventoryError("Some entries couldn't be removed. Please try again.");
+    }
+  }
+
+  /**
+   * Copy database pieces into the inventory. A piece that's already stocked
+   * (matched by name+vendor+SKU) has its quantity increased by one instead of
+   * being duplicated; anything new is added with quantity 1.
+   */
+  async function addLibraryItemsToInventory(libItems: LibraryItem[]) {
+    if (!libItems.length) return;
+    setPickingForInventory(false);
+    setSaveError(null);
+    try {
+      // Dedup against the live inventory; load it first if needed.
+      const current = inventoryLoaded ? inventory : await loadInventory();
+      const byKey = new Map(current.map((inv) => [catalogKey(inv), inv]));
+      let next = current;
+      let added = 0;
+      let increased = 0;
+      for (const li of libItems) {
+        const { id: _omit, ...spec } = li;
+        void _omit;
+        const existing = byKey.get(catalogKey(li));
+        if (existing) {
+          const saved = await updateInventoryQuantity(
+            existing.id,
+            existing.quantity + 1
+          );
+          byKey.set(catalogKey(saved), saved);
+          next = next.map((i) => (i.id === saved.id ? saved : i));
+          increased++;
+        } else {
+          const saved = await createInventoryItem(firm.id, spec, 1);
+          byKey.set(catalogKey(saved), saved);
+          next = [saved, ...next];
+          added++;
+        }
+      }
+      setInventory(next);
+      const parts: string[] = [];
+      if (added) parts.push(`${added} added`);
+      if (increased) parts.push(`${increased} already stocked — quantity increased`);
+      flashMsg(`Inventory updated: ${parts.join("; ")}.`);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Could not add to the inventory."
+      );
+    }
+  }
+
+  // From the Database tab: copy the current selection into the inventory.
+  function addLibrarySelectionToInventory() {
+    const chosen = library.filter((l) => librarySelected.has(l.id));
+    if (!chosen.length) return;
+    void addLibraryItemsToInventory(chosen);
+    setLibrarySelected(new Set());
+  }
+
+  // From the Inventory tab: open the database picker.
+  function openInventoryPicker() {
+    setPickingForInventory(true);
+    void ensureLibrary();
+  }
+
   // Quick room assignment from the grouped client view.
   const setItemRoom = useCallback(
     (item: Item, room: string) => {
@@ -754,7 +985,13 @@ export default function Workspace({
           </div>
 
           <div className="toolbar">
-            <div className="view-toggle" role="tablist">
+            <nav className="view-toggle" role="tablist" aria-label="Areas">
+              <button
+                className={viewMode === "home" ? "active" : ""}
+                onClick={() => setViewMode("home")}
+              >
+                Home
+              </button>
               <button
                 className={viewMode === "clients" ? "active" : ""}
                 onClick={() => setViewMode("clients")}
@@ -767,7 +1004,13 @@ export default function Workspace({
               >
                 Database
               </button>
-            </div>
+              <button
+                className={viewMode === "inventory" ? "active" : ""}
+                onClick={openInventory}
+              >
+                Inventory
+              </button>
+            </nav>
             {viewMode === "clients" && (
               <>
                 <span className="divider" />
@@ -908,7 +1151,17 @@ export default function Workspace({
           }}
         />
 
-        {viewMode === "library" ? (
+        {viewMode === "home" ? (
+          <HomePage
+            firmName={firm.name}
+            projectCount={projects.length}
+            databaseCount={libraryLoaded ? library.length : null}
+            inventoryCount={inventoryLoaded ? inventory.length : null}
+            onOpenClients={() => setViewMode("clients")}
+            onOpenDatabase={openLibrary}
+            onOpenInventory={openInventory}
+          />
+        ) : viewMode === "library" ? (
           <LibraryView
             library={library}
             loading={libraryLoading}
@@ -925,7 +1178,26 @@ export default function Workspace({
             onPrint={(items) => print(items.map(libraryToItem))}
             onDeleteSelected={removeLibrarySelected}
             onAddSelectedToClient={addLibrarySelectionToClient}
+            onAddSelectedToInventory={addLibrarySelectionToInventory}
             activeClientName={project.name}
+            showVendor={showVendor}
+          />
+        ) : viewMode === "inventory" ? (
+          <InventoryView
+            inventory={inventory}
+            loading={inventoryLoading}
+            error={inventoryError}
+            selected={inventorySelected}
+            onToggleSelect={toggleInventorySelect}
+            onAdd={() => setEditingInventory(emptyItem())}
+            onEdit={(inv) =>
+              setEditingInventory({ ...inventoryToItem(inv), id: inv.id })
+            }
+            onDelete={removeInventoryItem}
+            onSetQuantity={(inv, qty) => void setInventoryQuantity(inv, qty)}
+            onAddFromDatabase={openInventoryPicker}
+            onPrint={(items) => print(items.map(inventoryToItem))}
+            onDeleteSelected={removeInventorySelected}
             showVendor={showVendor}
           />
         ) : (
@@ -1067,6 +1339,24 @@ export default function Workspace({
           }
         />
       )}
+      {editingInventory && (
+        <ItemEditor
+          item={editingInventory}
+          libraryMode
+          heading={
+            inventory.some((i) => i.id === editingInventory.id)
+              ? "Edit inventory item"
+              : "New inventory item"
+          }
+          onSave={saveInventoryDraft}
+          onClose={() => setEditingInventory(null)}
+          onDelete={
+            inventory.some((i) => i.id === editingInventory.id)
+              ? removeInventoryItem
+              : undefined
+          }
+        />
+      )}
       {picking && (
         <LibraryPicker
           library={library}
@@ -1075,6 +1365,16 @@ export default function Workspace({
           clientName={project.name}
           onConfirm={addLibraryItemsToProject}
           onClose={() => setPicking(false)}
+        />
+      )}
+      {pickingForInventory && (
+        <LibraryPicker
+          library={library}
+          loading={libraryLoading}
+          error={libraryError}
+          clientName="your inventory"
+          onConfirm={(items) => void addLibraryItemsToInventory(items)}
+          onClose={() => setPickingForInventory(false)}
         />
       )}
       {importing && (

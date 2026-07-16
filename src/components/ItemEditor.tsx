@@ -18,6 +18,8 @@ interface Props {
    * per-client Room and Quantity fields (those belong to a project).
    */
   libraryMode?: boolean;
+  /** Overrides the modal heading (e.g. "Edit inventory item"). */
+  heading?: string;
 }
 
 /** Modal form for adding or editing a single item. */
@@ -29,6 +31,7 @@ export default function ItemEditor({
   onDuplicate,
   onSaveToLibrary,
   libraryMode = false,
+  heading,
 }: Props) {
   const [draft, setDraft] = useState<Item>(item);
   const [linkUrl, setLinkUrl] = useState("");
@@ -112,13 +115,14 @@ export default function ItemEditor({
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>
-            {libraryMode
-              ? item.name
-                ? "Edit database item"
-                : "New database item"
-              : item.name
-                ? "Edit item"
-                : "New item"}
+            {heading ??
+              (libraryMode
+                ? item.name
+                  ? "Edit database item"
+                  : "New database item"
+                : item.name
+                  ? "Edit item"
+                  : "New item")}
           </h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             ×

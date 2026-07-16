@@ -346,6 +346,27 @@ export function libraryToItem(li: LibraryItem): Item {
   };
 }
 
+/**
+ * A physical stock entry in the firm's inventory: the same product spec as a
+ * LibraryItem plus how many units the firm has on hand. Quantity 0 is valid
+ * ("we stock this but have none right now") — removing an entry is always an
+ * explicit delete, never a side effect of stepping the count down.
+ */
+export interface InventoryItem extends LibraryItem {
+  quantity: number;
+}
+
+/**
+ * Turn an inventory entry into a printable/project-style Item. Out-of-stock
+ * entries print as quantity 1 (an Item's quantity is at least 1).
+ */
+export function inventoryToItem(inv: InventoryItem): Item {
+  return {
+    ...libraryToItem(inv),
+    quantity: Math.max(1, inv.quantity),
+  };
+}
+
 /** Build a blank project with a fresh id. */
 export function emptyProject(name = "Untitled Project"): Project {
   return {
