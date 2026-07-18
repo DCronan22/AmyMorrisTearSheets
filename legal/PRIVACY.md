@@ -3,7 +3,7 @@
 > **DRAFT TEMPLATE — not legal advice.** Fill every `{{PLACEHOLDER}}`, then have
 > a lawyer review before publishing. Last updated: {{EFFECTIVE_DATE}}.
 
-**{{COMPANY_LEGAL_NAME}}** ("we", "us") operates the {{PRODUCT_NAME}} tear-sheet
+**{{COMPANY_LEGAL_NAME}}** ("we", "us") operates the Tear Sheets tear-sheet
 application (the "Service"). This policy explains what we collect and why.
 
 ## 1. Who we are, and our two roles
@@ -44,13 +44,13 @@ We do **not** sell personal information. International transfers (for EU/UK firm
 rely on Standard Contractual Clauses in our [DPA](DPA.md).
 
 ## 6. Retention
-Account data is kept while your account is active and for {{RETENTION_DAYS}} days
+Account data is kept while your account is active and for 30 days
 after closure. A firm's project data is deleted on subscription termination per the
 [DPA](DPA.md). You can export your data at any time (JSON / Excel).
 
 ## 7. Your rights
 Depending on your location you may request access, correction, export, or deletion
-of your personal data. Email **{{PRIVACY_CONTACT_EMAIL}}**. Requests about a firm's
+of your personal data. Email **daviscronan@gmail.com**. Requests about a firm's
 *client* data are routed to that firm (the controller).
 
 ## 8. Security
@@ -66,4 +66,4 @@ and any required authorities without undue delay, consistent with applicable law
 
 ## 11. Changes & contact
 We will post changes here with a new effective date. Questions:
-**{{PRIVACY_CONTACT_EMAIL}}**, {{COMPANY_ADDRESS}}.
+**daviscronan@gmail.com**, {{COMPANY_ADDRESS}}.

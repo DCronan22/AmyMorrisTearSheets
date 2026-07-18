@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { offloadItemImages } from "../lib/imageStore";
 import type { Item, Project } from "../types";
 import { sanitizeItem } from "../types";
 
@@ -67,6 +68,10 @@ export async function createProject(
   firmId: string,
   p: Project
 ): Promise<Project> {
+  // Move any embedded data-URL photos to storage before the row is written
+  // (covers duplicate-project and restore-backup, whose items can carry them).
+  const { items: uploadedItems } = await offloadItemImages(p.items, firmId);
+  p = { ...p, items: uploadedItems };
   // The database generates the project's UUID, so we must NOT send the
   // client-side placeholder id (it isn't a valid uuid and the insert would
   // be rejected). Strip it from the payload.

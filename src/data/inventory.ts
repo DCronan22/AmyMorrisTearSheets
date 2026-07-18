@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { offloadDataUrl, isDataUrlImage } from "../lib/imageStore";
 import type { InventoryItem, LibraryItem } from "../types";
 import { itemToLibrary, sanitizeItem } from "../types";
 
@@ -83,6 +84,10 @@ export async function createInventoryItem(
   li: Omit<LibraryItem, "id">,
   quantity = 1
 ): Promise<InventoryItem> {
+  if (isDataUrlImage(li.imageUrl)) {
+    const url = await offloadDataUrl(li.imageUrl!, firmId);
+    if (url) li = { ...li, imageUrl: url };
+  }
   const { data, error } = await supabase
     .from("inventory_items")
     .insert({
@@ -98,8 +103,13 @@ export async function createInventoryItem(
 
 /** Update an entry's product details and quantity. Ownership enforced by RLS. */
 export async function saveInventoryItem(
-  inv: InventoryItem
+  inv: InventoryItem,
+  firmId: string
 ): Promise<InventoryItem> {
+  if (isDataUrlImage(inv.imageUrl)) {
+    const url = await offloadDataUrl(inv.imageUrl!, firmId);
+    if (url) inv = { ...inv, imageUrl: url };
+  }
   const { id, quantity, ...rest } = inv;
   const { data, error } = await supabase
     .from("inventory_items")

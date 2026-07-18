@@ -51,7 +51,7 @@ and allow reasonable audits per {{AUDIT_TERMS}}.
 
 ## 8. Return & deletion
 On termination, the Controller may export its data (JSON/Excel). The Processor
-deletes Customer Content within {{POST_TERMINATION_DAYS}} days thereafter, unless
+deletes Customer Content within 30 days thereafter, unless
 retention is legally required.
 
 ## 9. Liability

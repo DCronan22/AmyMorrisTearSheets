@@ -38,6 +38,7 @@ import {
   updateInventoryQuantity,
   deleteInventoryItem,
 } from "./data/inventory";
+import { offloadItemImages } from "./lib/imageStore";
 import { distinct, projectTotal, formatPrice, toggledSet } from "./util";
 import CatalogFilterBar from "./components/CatalogFilterBar";
 import { useCatalogFilter } from "./components/useCatalogFilter";
@@ -280,16 +281,47 @@ export default function Workspace({
   // Save to the database. State was already updated optimistically by
   // applyProjectChange, and the save echoes nothing back, so there's no
   // write-back on success (which also means out-of-order replies are harmless).
-  const persist = useCallback(async (p: Project) => {
-    setSaveError(null);
-    try {
-      await saveProject(p);
-    } catch (e) {
-      setSaveError(
-        e instanceof Error ? e.message : "Changes could not be saved."
-      );
-    }
-  }, []);
+  // Exception: items still carrying base64 data-URL photos (fresh picks,
+  // imports, legacy rows) get those uploaded to Storage first, and the small
+  // public URLs are adopted back into state so the next save doesn't re-upload.
+  const persist = useCallback(
+    async (p: Project) => {
+      setSaveError(null);
+      try {
+        const { items, changed } = await offloadItemImages(p.items, firm.id);
+        if (changed) {
+          const swapped = new Map(
+            p.items.map((orig, i) => [orig.id, { orig, next: items[i] }])
+          );
+          setProjects((ps) =>
+            ps.map((proj) =>
+              proj.id !== p.id
+                ? proj
+                : {
+                    ...proj,
+                    // Only swap an image the user hasn't changed again since
+                    // this save started.
+                    items: proj.items.map((it) => {
+                      const u = swapped.get(it.id);
+                      return u &&
+                        u.next.imageUrl !== u.orig.imageUrl &&
+                        it.imageUrl === u.orig.imageUrl
+                        ? { ...it, imageUrl: u.next.imageUrl }
+                        : it;
+                    }),
+                  }
+            )
+          );
+        }
+        await saveProject(changed ? { ...p, items } : p);
+      } catch (e) {
+        setSaveError(
+          e instanceof Error ? e.message : "Changes could not be saved."
+        );
+      }
+    },
+    [firm.id]
+  );
 
   // Apply a change to the active project: update local state immediately, then
   // persist to the database.
@@ -418,7 +450,10 @@ export default function Workspace({
     const exists = library.some((l) => l.id === draft.id);
     try {
       if (exists) {
-        const saved = await saveLibraryItem({ id: draft.id, ...itemToLibrary(draft) });
+        const saved = await saveLibraryItem(
+          { id: draft.id, ...itemToLibrary(draft) },
+          firm.id
+        );
         setLibrary((ls) => ls.map((l) => (l.id === saved.id ? saved : l)));
       } else {
         const saved = await createLibraryItem(firm.id, itemToLibrary(draft));
@@ -625,11 +660,14 @@ export default function Workspace({
     const existing = inventory.find((i) => i.id === draft.id);
     try {
       if (existing) {
-        const saved = await saveInventoryItem({
-          id: draft.id,
-          ...itemToLibrary(draft),
-          quantity: existing.quantity,
-        });
+        const saved = await saveInventoryItem(
+          {
+            id: draft.id,
+            ...itemToLibrary(draft),
+            quantity: existing.quantity,
+          },
+          firm.id
+        );
         setInventory((is) => is.map((i) => (i.id === saved.id ? saved : i)));
       } else {
         const saved = await createInventoryItem(firm.id, itemToLibrary(draft));

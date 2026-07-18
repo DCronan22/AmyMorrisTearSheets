@@ -29,14 +29,15 @@ function apiDevPlugin(opts: {
             const { getUserId } = await server.ssrLoadModule('/api/_lib/auth.ts')
             const mod = await server.ssrLoadModule(opts.modulePath)
             const run = mod[opts.exportName] as (
-              body: unknown
+              body: unknown,
+              userId: string
             ) => Promise<{ status: number; payload: unknown }>
             const userId = await getUserId(req.headers.authorization)
             if (!userId) return json(401, { error: 'Not authenticated.' })
             const chunks: Buffer[] = []
             for await (const c of req) chunks.push(c as Buffer)
             const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
-            const { status, payload } = await run(body)
+            const { status, payload } = await run(body, userId)
             return json(status, payload)
           } catch {
             return json(500, { error: opts.failMessage })
@@ -55,6 +56,7 @@ export default defineConfig(({ mode }) => {
     'VITE_SUPABASE_URL',
     'VITE_SUPABASE_ANON_KEY',
     'ANTHROPIC_API_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
   ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
@@ -77,6 +79,13 @@ export default defineConfig(({ mode }) => {
         modulePath: '/api/_lib/style-run.ts',
         exportName: 'runStyleDetect',
         failMessage: 'Style detection failed.',
+      }),
+      apiDevPlugin({
+        name: 'api-delete-user-dev',
+        route: '/api/delete-user',
+        modulePath: '/api/_lib/delete-user-run.ts',
+        exportName: 'runDeleteUser',
+        failMessage: 'Deleting the account failed.',
       }),
     ],
   }

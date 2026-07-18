@@ -4,7 +4,7 @@
 > lawyer review before you take payment. Effective: {{EFFECTIVE_DATE}}.
 
 This agreement is between **{{COMPANY_LEGAL_NAME}}** ("we") and the design firm
-that subscribes ("you"). By creating an account or using {{PRODUCT_NAME}} (the
+that subscribes ("you"). By creating an account or using Tear Sheets (the
 "Service") you agree to these terms.
 
 ## 1. Eligibility & accounts
@@ -30,7 +30,7 @@ subscription for your firm's internal business purposes.
 - **You represent that you have the rights to all content you upload**, including
   vendor product images, and you will not upload infringing or unlawful material.
 - You agree to indemnify us against claims arising from your Customer Content.
-- **DMCA:** send takedown notices to **{{DMCA_AGENT_EMAIL}}**; we remove infringing
+- **DMCA:** send takedown notices to **daviscronan@gmail.com**; we remove infringing
   material and may terminate repeat infringers.
 
 ## 5. Acceptable use
@@ -52,12 +52,12 @@ extent permitted by law.
 
 ## 9. Limitation of liability
 To the maximum extent permitted by law, our aggregate liability is limited to the
-fees you paid in the {{LIABILITY_WINDOW}} preceding the claim, and we are not liable
+fees you paid in the 12 months preceding the claim, and we are not liable
 for indirect or consequential damages.
 
 ## 10. Term & termination
 Either party may terminate per {{TERMINATION_TERMS}}. On termination you may export
-your data; we delete your project data after {{POST_TERMINATION_DAYS}} days.
+your data; we delete your project data after 30 days.
 
 ## 11. Changes
 We may update these terms; material changes will be notified and take effect on the
@@ -69,4 +69,4 @@ Governed by the laws of {{GOVERNING_LAW_STATE}}; venue and dispute resolution:
 
 ## 13. Miscellaneous
 Assignment, severability, entire agreement, and notices: {{MISC_TERMS}}.
-Contact: {{LEGAL_CONTACT_EMAIL}}, {{COMPANY_ADDRESS}}.
+Contact: daviscronan@gmail.com, {{COMPANY_ADDRESS}}.

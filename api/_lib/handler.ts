@@ -9,7 +9,7 @@ import { getUserId } from "./auth.js";
 const WINDOW_MS = 60_000;
 
 export function makeHandler<B>(opts: {
-  run: (body: B) => Promise<{ status: number; payload: unknown }>;
+  run: (body: B, userId: string) => Promise<{ status: number; payload: unknown }>;
   maxPerWindow: number;
   failMessage: string;
 }) {
@@ -43,7 +43,7 @@ export function makeHandler<B>(opts: {
 
     const body = (req.body ?? {}) as B;
     try {
-      const { status, payload } = await opts.run(body);
+      const { status, payload } = await opts.run(body, userId);
       return res.status(status).json(payload);
     } catch {
       return res.status(500).json({ error: opts.failMessage });

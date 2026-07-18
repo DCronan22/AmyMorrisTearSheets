@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { offloadDataUrl, offloadItemImages, isDataUrlImage } from "../lib/imageStore";
 import type { LibraryItem } from "../types";
 import { itemToLibrary, sanitizeItem } from "../types";
 
@@ -66,6 +67,10 @@ export async function createLibraryItem(
   firmId: string,
   li: Omit<LibraryItem, "id">
 ): Promise<LibraryItem> {
+  if (isDataUrlImage(li.imageUrl)) {
+    const url = await offloadDataUrl(li.imageUrl!, firmId);
+    if (url) li = { ...li, imageUrl: url };
+  }
   const { data, error } = await supabase
     .from("library_items")
     .insert({ data: libraryToData(li), firm_id: firmId })
@@ -81,7 +86,8 @@ export async function createLibraryItems(
   lis: Omit<LibraryItem, "id">[]
 ): Promise<LibraryItem[]> {
   if (lis.length === 0) return [];
-  const rows = lis.map((li) => ({ data: libraryToData(li), firm_id: firmId }));
+  const { items: uploaded } = await offloadItemImages(lis, firmId);
+  const rows = uploaded.map((li) => ({ data: libraryToData(li), firm_id: firmId }));
   const { data, error } = await supabase
     .from("library_items")
     .insert(rows)
@@ -91,7 +97,14 @@ export async function createLibraryItems(
 }
 
 /** Update a library item in place. Ownership enforced by RLS. */
-export async function saveLibraryItem(li: LibraryItem): Promise<LibraryItem> {
+export async function saveLibraryItem(
+  li: LibraryItem,
+  firmId: string
+): Promise<LibraryItem> {
+  if (isDataUrlImage(li.imageUrl)) {
+    const url = await offloadDataUrl(li.imageUrl!, firmId);
+    if (url) li = { ...li, imageUrl: url };
+  }
   const { id, ...rest } = li;
   const { data, error } = await supabase
     .from("library_items")

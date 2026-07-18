@@ -32,6 +32,19 @@ Then run the later migrations the same way (New query → paste → Run):
 
 - [`supabase/migrations/0002_admin_delete_user.sql`](supabase/migrations/0002_admin_delete_user.sql) — admin delete-user RPC.
 - [`supabase/migrations/0003_firm_style.sql`](supabase/migrations/0003_firm_style.sql) — **required for per-firm tear sheet styling.** Adds the `firms.style` column and the `set_firm_style` RPC. Until this is run, the in-app "Tear sheet style" editor will fail to save.
+- [`supabase/migrations/0004_library.sql`](supabase/migrations/0004_library.sql) — the firm's master item database.
+- [`supabase/migrations/0005_inventory.sql`](supabase/migrations/0005_inventory.sql) — physical inventory with quantities.
+- [`supabase/migrations/0006_storage.sql`](supabase/migrations/0006_storage.sql) — **required for photo storage.** Creates the public `item-images` bucket with firm-scoped upload rules. Until this is run, item photos are embedded in database rows as base64 (works, but bloats the database and slows loading).
+
+### Service-role key (full account deletion)
+
+For the admin "Delete user" button to remove the actual login (not just the
+profile), the serverless API needs the project's **secret/service_role key**:
+Supabase dashboard → **Settings → API keys** → copy the **secret key**
+(`sb_secret_...`), then add it as `SUPABASE_SERVICE_ROLE_KEY` in Vercel's
+environment variables (and optionally `.env.local` for local dev). Never prefix
+it with `VITE_` — that would ship it to the browser. Without it, deleting a
+user falls back to removing only the profile row (access is still revoked).
 
 ## 3. Configure authentication
 

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { authedPostJson, apiErrorMessage } from "../lib/api";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
 import { withSafeStyle } from "../types";
 
@@ -80,8 +81,31 @@ export async function setProfileRole(
   if (error) throw error;
 }
 
-/** Permanently delete a user account (auth user + profile). Admin only. */
+/**
+ * Permanently delete a user account (auth login + profile). Admin only.
+ *
+ * Goes through the serverless endpoint, which holds the service-role key and
+ * can truly remove the auth.users row. If the key isn't configured on the
+ * server (answers 501 — e.g. local dev), fall back to the admin_delete_user
+ * RPC, which at least removes the profile and thereby revokes all access.
+ */
 export async function deleteUser(userId: string): Promise<void> {
+  let result: { res: Response; json: unknown } | null = null;
+  try {
+    result = await authedPostJson("/api/delete-user", { userId });
+  } catch {
+    // Network failure / endpoint unreachable — degrade to the RPC below.
+  }
+  if (result) {
+    if (result.res.ok) return;
+    // A real refusal (not-admin, self-delete, server error) must surface;
+    // only "not configured" (501) falls through to the profile-only RPC.
+    if (result.res.status !== 501) {
+      throw new Error(
+        apiErrorMessage(result.json, "Deleting the account failed.")
+      );
+    }
+  }
   const { error } = await supabase.rpc("admin_delete_user", { target: userId });
   if (error) throw error;
 }
