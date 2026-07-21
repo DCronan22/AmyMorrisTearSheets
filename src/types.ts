@@ -90,7 +90,9 @@ export const FONT_STACKS: Record<
 > = {
   "classic-serif": {
     head: '"Cormorant Garamond", Georgia, serif',
-    body: '"Inter", system-ui, sans-serif',
+    // Calibri first so the print/PDF details render in the same font the
+    // PowerPoint export uses (Amy Morris's reference sheets are Calibri).
+    body: 'Calibri, "Segoe UI", system-ui, sans-serif',
     label: "Classic serif",
   },
   "modern-sans": {
@@ -120,7 +122,9 @@ export function defaultFirmStyle(): FirmStyle {
     font: "classic-serif",
     layout: "list",
     showPrice: true,
-    showSku: true,
+    // Amy Morris's reference sheets have no SKU row (Name / Dimensions / Price /
+    // Lead Time only). Firms that want model numbers can toggle SKU on.
+    showSku: false,
     showDimensions: true,
     showRoom: false,
     coverTitle: "",

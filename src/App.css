@@ -1154,7 +1154,9 @@ a.btn {
     left: 0.49in;
     right: 0.49in;
     font-size: 18pt;
-    line-height: 1.21;
+    /* Single line spacing (the font's natural height), matching Amy Morris's
+       reference template and the PowerPoint export. */
+    line-height: normal;
   }
   .ts-details p {
     margin: 0;

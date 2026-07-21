@@ -28,7 +28,9 @@ const WORDMARK_H = 0.75; // .ts-wordmark (42pt line) when there's no logo
 const WORDMARK_PT = 42; // sized to match the reference logo's lettering
 
 const FONT_PT = 18; // .ts-room / .ts-details font-size
-const LINE_SPACING_PT = FONT_PT * 1.21; // .ts-details line-height
+// ~Calibri's natural single line height; used only to size the text boxes and
+// space the optional room label (the details text itself uses single spacing).
+const LINE_SPACING_PT = FONT_PT * 1.21;
 const LINE_IN = LINE_SPACING_PT / 72;
 
 // FONT_STACKS' web fonts aren't installed on most PowerPoint machines, so each
@@ -264,7 +266,8 @@ export async function exportItemsToPptx(
       color: text,
       align: "center",
       valign: "top",
-      lineSpacing: LINE_SPACING_PT,
+      // No explicit line spacing: single (the font's natural line height),
+      // exactly like the reference template (its runs carry no <a:lnSpc>).
     });
 
     // Optional firm tagline, sitting in the page's bottom padding (mirrors
