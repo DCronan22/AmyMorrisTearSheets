@@ -16,9 +16,10 @@ interface Props {
 // message instead of being handed to a parser that would throw something cryptic.
 const SUPPORTED = /\.(xlsx|xls|csv|pptx)$/i;
 const ACCEPT = ".xlsx,.xls,.csv,.pptx";
-// xlsx/pptx are zipped, so even big decks stay well under this. The guard is
-// really there to stop someone dropping a 500 MB video and freezing the tab.
-const MAX_BYTES = 25 * 1024 * 1024;
+// Per-file guard. xlsx/pptx are zipped, so even large photo-heavy decks stay
+// well under this; it's really just here to stop someone dropping a giant file
+// (e.g. a 500 MB video) and freezing the tab while the browser tries to parse it.
+const MAX_BYTES = 150 * 1024 * 1024;
 // Upper bound on how many files one folder import will parse in a single pass,
 // so a stray huge directory can't lock up the tab. Import sub-folders instead.
 const MAX_FILES = 2000;
