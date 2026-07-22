@@ -8,8 +8,9 @@ import {
   safeLinkUrl,
 } from "../util";
 
-// Sheets per screen in the grid layout (2×2).
-const GRID_SIZE = 4;
+// Selectable sheets-per-screen, and the grid column count each one uses.
+const PER_SCREEN_OPTIONS = [1, 2, 4, 6, 8] as const;
+const GRID_COLS: Record<number, number> = { 2: 2, 4: 2, 6: 3, 8: 4 };
 
 interface Props {
   /** The items to present, in presentation order. */
@@ -22,7 +23,13 @@ interface Props {
   showVendor?: boolean;
 }
 
-/** Full-screen presentation mode: one item per screen, or a 2×2 grid of four. */
+/**
+ * Full-screen presentation mode: choose 1, 2, 4, 6, or 8 tear sheets per screen.
+ * One-per-screen is the large single layout; the rest are grids. Navigation
+ * always moves a whole page (perScreen items) at a time, and the index snaps to
+ * the start of the neighboring page so changing the count keeps you on an item
+ * that was just on screen.
+ */
 export default function Slideshow({
   items,
   title,
@@ -30,34 +37,24 @@ export default function Slideshow({
   onClose,
   showVendor = true,
 }: Props) {
-  const [layout, setLayout] = useState<"single" | "grid">("single");
+  const [perScreen, setPerScreen] = useState(1);
   const [index, setIndex] = useState(
     Math.min(Math.max(0, startIndex), Math.max(0, items.length - 1))
   );
 
-  // In grid layout, navigation moves a whole page (4 items) at a time; the
-  // index snaps to the start of the neighboring page so switching back to
-  // single layout lands on an item that was just on screen.
   const next = useCallback(
     () =>
       setIndex((i) =>
-        layout === "grid"
-          ? Math.min(
-              (Math.floor(i / GRID_SIZE) + 1) * GRID_SIZE,
-              items.length - 1
-            )
-          : Math.min(i + 1, items.length - 1)
+        Math.min((Math.floor(i / perScreen) + 1) * perScreen, items.length - 1)
       ),
-    [items.length, layout]
+    [items.length, perScreen]
   );
   const prev = useCallback(
     () =>
       setIndex((i) =>
-        layout === "grid"
-          ? Math.max((Math.floor(i / GRID_SIZE) - 1) * GRID_SIZE, 0)
-          : Math.max(i - 1, 0)
+        Math.max((Math.floor(i / perScreen) - 1) * perScreen, 0)
       ),
-    [layout]
+    [perScreen]
   );
 
   useEffect(() => {
@@ -87,12 +84,17 @@ export default function Slideshow({
     );
   }
 
-  const page = Math.floor(index / GRID_SIZE);
-  const pageCount = Math.ceil(items.length / GRID_SIZE);
-  const atStart = layout === "grid" ? page === 0 : index === 0;
-  const atEnd =
-    layout === "grid" ? page === pageCount - 1 : index === items.length - 1;
-  const pageItems = items.slice(page * GRID_SIZE, (page + 1) * GRID_SIZE);
+  const page = Math.floor(index / perScreen);
+  const pageCount = Math.ceil(items.length / perScreen);
+  const atStart = page === 0;
+  const atEnd = page === pageCount - 1;
+  const pageItems = items.slice(page * perScreen, (page + 1) * perScreen);
+  const cols = GRID_COLS[perScreen] ?? 2;
+  const gridStyle = {
+    gridTemplateColumns: `repeat(${cols}, 1fr)`,
+    gridTemplateRows: `repeat(${Math.ceil(perScreen / cols)}, 1fr)`,
+    maxWidth: cols > 2 ? "none" : undefined,
+  };
 
   // Vendor is hidden when the toggle is off; collection still shows.
   const vendorLine = (it: Item) =>
@@ -106,24 +108,23 @@ export default function Slideshow({
       <div className="show-bar">
         <div className="show-meta">{title && <strong>{title}</strong>}</div>
         <div className="show-bar-right">
-          <div className="show-layout" role="tablist" aria-label="Layout">
-            <button
-              className={layout === "single" ? "active" : ""}
-              onClick={() => setLayout("single")}
-            >
-              One per screen
-            </button>
-            <button
-              className={layout === "grid" ? "active" : ""}
-              onClick={() => setLayout("grid")}
-            >
-              Four per screen
-            </button>
+          <div className="show-layout" role="group" aria-label="Sheets per screen">
+            <span className="show-layout-label">Per screen</span>
+            {PER_SCREEN_OPTIONS.map((n) => (
+              <button
+                key={n}
+                className={perScreen === n ? "active" : ""}
+                aria-pressed={perScreen === n}
+                onClick={() => setPerScreen(n)}
+              >
+                {n}
+              </button>
+            ))}
           </div>
           <div className="show-count">
-            {layout === "grid"
-              ? `${page + 1} / ${pageCount}`
-              : `${index + 1} / ${items.length}`}
+            {perScreen === 1
+              ? `${index + 1} / ${items.length}`
+              : `${page + 1} / ${pageCount}`}
           </div>
           <button className="show-close" onClick={onClose}>
             Close ✕
@@ -141,8 +142,8 @@ export default function Slideshow({
           ‹
         </button>
 
-        {layout === "grid" ? (
-          <div className="show-grid">
+        {perScreen > 1 ? (
+          <div className="show-grid" style={gridStyle}>
             {pageItems.map((gi) => (
               <div className="show-cell" key={gi.id}>
                 <div className="show-cell-img">

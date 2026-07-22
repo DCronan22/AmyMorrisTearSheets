@@ -39,7 +39,7 @@ import {
   deleteInventoryItem,
 } from "./data/inventory";
 import { offloadItemImages } from "./lib/imageStore";
-import { distinct, projectTotal, formatPrice, toggledSet } from "./util";
+import { distinct, distinctTags, projectTotal, formatPrice, toggledSet } from "./util";
 import CatalogFilterBar from "./components/CatalogFilterBar";
 import { useCatalogFilter } from "./components/useCatalogFilter";
 import RoomGroupedGallery from "./components/RoomGroupedGallery";
@@ -194,6 +194,25 @@ export default function Workspace({
   const rooms = useMemo(
     () => (project ? distinct(project.items, "room") : []),
     [project]
+  );
+  // Existing vendor / category values across everything the firm has entered —
+  // project items, the database, and inventory — offered in the editor dropdowns
+  // so new items reuse the same names instead of drifting into near-duplicates.
+  const vendorOptions = useMemo(
+    () =>
+      distinctTags(
+        [...(project?.items ?? []), ...library, ...inventory],
+        "vendor"
+      ),
+    [project, library, inventory]
+  );
+  const categoryOptions = useMemo(
+    () =>
+      distinctTags(
+        [...(project?.items ?? []), ...library, ...inventory],
+        "category"
+      ),
+    [project, library, inventory]
   );
 
   // --- Selection ------------------------------------------------------------
@@ -1491,6 +1510,8 @@ export default function Workspace({
               : undefined
           }
           onSaveToLibrary={saveItemToLibrary}
+          vendorOptions={vendorOptions}
+          categoryOptions={categoryOptions}
         />
       )}
       {editingLibrary && (
@@ -1504,6 +1525,8 @@ export default function Workspace({
               ? removeLibraryItem
               : undefined
           }
+          vendorOptions={vendorOptions}
+          categoryOptions={categoryOptions}
         />
       )}
       {editingInventory && (
@@ -1515,6 +1538,8 @@ export default function Workspace({
               ? "Edit inventory item"
               : "New inventory item"
           }
+          vendorOptions={vendorOptions}
+          categoryOptions={categoryOptions}
           onSave={saveInventoryDraft}
           onClose={() => setEditingInventory(null)}
           onDelete={

@@ -3,6 +3,7 @@ import type { Item } from "../types";
 import { autofill, compressImageFile } from "../lib/extract";
 import type { AutofillFields } from "../lib/extract";
 import { safeImageUrl } from "../util";
+import TagField from "./TagField";
 
 interface Props {
   item: Item;
@@ -20,6 +21,10 @@ interface Props {
   libraryMode?: boolean;
   /** Overrides the modal heading (e.g. "Edit inventory item"). */
   heading?: string;
+  /** Existing vendor values across the catalog, for the vendor dropdown. */
+  vendorOptions?: string[];
+  /** Existing category values across the catalog, for the category dropdown. */
+  categoryOptions?: string[];
 }
 
 /** Modal form for adding or editing a single item. */
@@ -32,6 +37,8 @@ export default function ItemEditor({
   onSaveToLibrary,
   libraryMode = false,
   heading,
+  vendorOptions = [],
+  categoryOptions = [],
 }: Props) {
   const [draft, setDraft] = useState<Item>(item);
   const [linkUrl, setLinkUrl] = useState("");
@@ -169,10 +176,13 @@ export default function ItemEditor({
             />
           </label>
 
-          <label>
-            <span>Vendor</span>
-            <input value={draft.vendor} onChange={(e) => set("vendor", e.target.value)} />
-          </label>
+          <TagField
+            label="Vendor"
+            value={draft.vendor}
+            onChange={(v) => set("vendor", v)}
+            options={vendorOptions}
+            placeholder="Add a vendor…"
+          />
           <label>
             <span>Collection</span>
             <input
@@ -181,14 +191,13 @@ export default function ItemEditor({
               placeholder="Product line / collection"
             />
           </label>
-          <label>
-            <span>Category</span>
-            <input
-              value={draft.category}
-              onChange={(e) => set("category", e.target.value)}
-              placeholder="Seating, Lighting, Rug…"
-            />
-          </label>
+          <TagField
+            label="Category"
+            value={draft.category}
+            onChange={(v) => set("category", v)}
+            options={categoryOptions}
+            placeholder="Seating, Lighting, Rug…"
+          />
           {!libraryMode && (
             <label>
               <span>Room</span>

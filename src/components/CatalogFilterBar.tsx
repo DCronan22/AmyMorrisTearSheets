@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
-import { distinct } from "../util";
+import { distinct, distinctTags } from "../util";
 import type { Filterable } from "../util";
 import { EMPTY_CATALOG_FILTER, hasActiveFilter } from "./useCatalogFilter";
 import type { CatalogFilter } from "./useCatalogFilter";
@@ -29,9 +29,10 @@ export default function CatalogFilterBar<T extends Filterable>({
   rooms,
   children,
 }: Props<T>) {
-  const vendors = useMemo(() => distinct(items, "vendor"), [items]);
+  // Vendor and category are multi-value, so split their tags for the dropdowns.
+  const vendors = useMemo(() => distinctTags(items, "vendor"), [items]);
   const collections = useMemo(() => distinct(items, "collection"), [items]);
-  const categories = useMemo(() => distinct(items, "category"), [items]);
+  const categories = useMemo(() => distinctTags(items, "category"), [items]);
   const set = (patch: Partial<CatalogFilter>) => onChange({ ...filter, ...patch });
 
   return (

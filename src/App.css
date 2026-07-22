@@ -594,6 +594,121 @@ a.btn {
   border: 1px solid var(--line);
 }
 
+/* --- Multi-value chip field (vendor / category) ---------------- */
+.tag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: relative;
+}
+.tag-field.full {
+  grid-column: 1 / -1;
+}
+.tag-field > span {
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tag-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 34px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  min-height: 40px;
+  cursor: text;
+  position: relative;
+}
+.tag-box:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  background: #fff;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px 3px 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink, inherit);
+  border-radius: 20px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tag-x {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 3px;
+  border-radius: 50%;
+}
+.tag-x:hover {
+  color: #c0392b;
+}
+.tag-input {
+  flex: 1;
+  min-width: 90px;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 4px 2px !important;
+  font: inherit;
+}
+.tag-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px;
+}
+.tag-menu {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.tag-menu li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+.tag-menu li button:hover {
+  background: var(--bg);
+}
+.tag-create {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* --- Import panel ---------------------------------------------- */
 .dropzone {
   border: 2px dashed var(--line);
@@ -824,6 +939,19 @@ a.btn {
 .show-layout button.active {
   background: rgba(255, 255, 255, 0.16);
   color: #f2ede4;
+}
+.show-layout-label {
+  align-self: center;
+  padding: 7px 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9c927f;
+  border-right: 1px solid rgba(255, 255, 255, 0.25);
+  white-space: nowrap;
+}
+.show-layout button {
+  min-width: 38px;
 }
 .show-grid {
   flex: 1;

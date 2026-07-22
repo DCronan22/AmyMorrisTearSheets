@@ -1,5 +1,6 @@
 import type { SyntheticEvent } from "react";
 import type { Item } from "./types";
+import { parseTags, tagsInclude } from "./lib/tags";
 
 /** Format a price as USD; blank when null. */
 export function formatPrice(p: number | null): string {
@@ -46,6 +47,22 @@ export function distinct<T>(items: T[], key: keyof T): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Distinct, sorted individual tags of a comma-separated multi-value field
+ * (vendor, category) — ", "-joined values are split so each vendor/category
+ * appears once. Case-insensitive de-dup, keeping the first-seen casing.
+ */
+export function distinctTags<T>(items: T[], key: keyof T): string[] {
+  const byLower = new Map<string, string>();
+  for (const it of items) {
+    for (const t of parseTags(String(it[key] ?? ""))) {
+      const k = t.toLowerCase();
+      if (!byLower.has(k)) byLower.set(k, t);
+    }
+  }
+  return [...byLower.values()].sort((a, b) => a.localeCompare(b));
+}
+
 /** The product fields a catalog search/filter operates on. */
 export interface Filterable {
   name: string;
@@ -72,9 +89,11 @@ export function filterCatalog<T extends Filterable & { room?: string }>(
   const q = f.search.trim().toLowerCase();
   return items.filter((it) => {
     if (f.room && it.room !== f.room) return false;
-    if (f.vendor && it.vendor !== f.vendor) return false;
+    // Vendor and category are multi-value: match when the item's tags include
+    // the selected value (an item vendor of "A, B" matches a filter of "A").
+    if (f.vendor && !tagsInclude(it.vendor, f.vendor)) return false;
     if (f.collection && it.collection !== f.collection) return false;
-    if (f.category && it.category !== f.category) return false;
+    if (f.category && !tagsInclude(it.category, f.category)) return false;
     if (q) {
       const hay =
         `${it.name} ${it.vendor} ${it.collection} ${it.sku} ${it.material} ${it.color}`.toLowerCase();
