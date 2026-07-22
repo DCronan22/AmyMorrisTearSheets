@@ -406,8 +406,7 @@ export default function ImportPanel({
               <br />
               <strong>PowerPoint (.pptx):</strong> every slide in every deck
               becomes an item — the product name, dimensions, price, lead time,
-              room, and photo are pulled from each slide automatically, and the
-              vendor is read from the slide’s comment if there is one. Drop or
+              room, and photo are pulled from each slide automatically. Drop or
               choose a folder to import many decks at once.
             </p>
           </>

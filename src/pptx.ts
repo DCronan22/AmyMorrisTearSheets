@@ -67,14 +67,6 @@ export async function parsePptx(file: File): Promise<ImportResult> {
       }
       item.upholstered = parsed.upholstered;
 
-      // Vendor is authored into the slide's comment, not its text, so pull it
-      // from the linked comment part (legacy or modern format).
-      const vendor = extractSlideVendor(files, path);
-      if (vendor) {
-        item.vendor = vendor;
-        fieldsSeen.add("Vendor");
-      }
-
       if (imgPath && files[imgPath]) {
         try {
           const bytes = files[imgPath];
@@ -287,72 +279,6 @@ export function chooseProductImage(
   // the first embedded image as a best effort. But if we *could* measure and
   // everything left was logo-shaped, return no photo — that's a valid outcome.
   return anyMeasured ? "" : fallback;
-}
-
-/**
- * Pull the vendor for a slide out of its comment. PowerPoint keeps comments in
- * their own parts, linked from the slide's `.rels`, so we follow that link and
- * read the first comment's text. Two on-disk formats exist and both are handled
- * by {@link firstCommentText}: legacy (`<p:text>`) and modern/threaded
- * (`<a:t>` runs, 365/2021). Returns "" when the slide has no comment.
- */
-export function extractSlideVendor(
-  files: Record<string, Uint8Array>,
-  slidePath: string
-): string {
-  const relsPath = slidePath.replace(
-    /slides\/(slide\d+)\.xml$/,
-    "slides/_rels/$1.xml.rels"
-  );
-  const rels = files[relsPath] ? textOf(files[relsPath]) : "";
-  if (!rels) return "";
-
-  // Collect the comment parts this slide points at. The legacy (2006) and
-  // modern (2018) relationship type URIs both end in "/comments"; as a safety
-  // net we also accept any non-external target that resolves under ppt/comments/.
-  const targets: string[] = [];
-  const relRe = /<Relationship\b[^>]*>/g;
-  let r: RegExpExecArray | null;
-  while ((r = relRe.exec(rels)) !== null) {
-    const tag = r[0];
-    if (/TargetMode\s*=\s*"External"/i.test(tag)) continue;
-    const type = /\bType\s*=\s*"([^"]+)"/.exec(tag)?.[1] ?? "";
-    const target = /\bTarget\s*=\s*"([^"]+)"/.exec(tag)?.[1];
-    if (!target) continue;
-    if (/\/comments$/i.test(type) || /(^|\/)comments\//i.test(target)) {
-      targets.push(resolveRel(target));
-    }
-  }
-
-  for (const path of targets) {
-    if (!files[path]) continue;
-    const vendor = firstCommentText(textOf(files[path]));
-    if (vendor) return vendor;
-  }
-  return "";
-}
-
-/**
- * Text of the first comment in a comments part, for either PowerPoint format.
- * Legacy comments put the body in `<p:text>`; modern/threaded comments put it
- * in `<a:t>` runs inside the comment's `<…:txBody>`. Exported for testing.
- */
-export function firstCommentText(xml: string): string {
-  // Legacy: the first <…:text> element is the first comment's body.
-  const legacy = /<(?:\w+:)?text\b[^>]*>([\s\S]*?)<\/(?:\w+:)?text>/.exec(xml);
-  if (legacy) {
-    const s = collapse(decodeEntities(legacy[1]));
-    if (s) return s;
-  }
-  // Modern: isolate the first comment element (<p188:cm>…</p188:cm>, prefix
-  // varies) so replies/other comments don't bleed in, then join its text runs.
-  const cm = /<(\w+):cm\b[^>]*>([\s\S]*?)<\/\1:cm>/.exec(xml);
-  const scope = cm ? cm[2] : xml;
-  const runRe = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g;
-  let m: RegExpExecArray | null;
-  let s = "";
-  while ((m = runRe.exec(scope)) !== null) s += decodeEntities(m[1]);
-  return collapse(s);
 }
 
 /**
