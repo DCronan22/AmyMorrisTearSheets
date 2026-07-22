@@ -1,6 +1,8 @@
 import type { FirmStyle, Item } from "./types";
+import { PAIRING_FONTS } from "./types";
 import { priceLine, safeLogoUrl } from "./util";
 import { triggerDownload } from "./storage";
+import { layoutSheet } from "./branding/sheetLayout";
 
 // PowerPoint tear-sheet export — one slide per item, replicating the print/PDF
 // layout (TearSheetPrint + the .ts-page rules in App.css) exactly: a 7.5in x
@@ -32,15 +34,6 @@ const FONT_PT = 18; // .ts-room / .ts-details font-size
 // space the optional room label (the details text itself uses single spacing).
 const LINE_SPACING_PT = FONT_PT * 1.21;
 const LINE_IN = LINE_SPACING_PT / 72;
-
-// FONT_STACKS' web fonts aren't installed on most PowerPoint machines, so each
-// pairing maps to the closest fonts PowerPoint ships everywhere.
-const PPTX_FONTS: Record<FirmStyle["font"], { head: string; body: string }> = {
-  "classic-serif": { head: "Georgia", body: "Calibri" },
-  "modern-sans": { head: "Calibri", body: "Calibri" },
-  editorial: { head: "Georgia", body: "Georgia" },
-  minimal: { head: "Segoe UI", body: "Segoe UI" },
-};
 
 /** "#abc" / "#aabbcc" / "#aabbccdd" → the 6-digit hex pptxgenjs expects. */
 function toPptxColor(c: string, fallback: string): string {
@@ -156,7 +149,7 @@ export async function exportItemsToPptx(
   if (items.length === 0) return { slides: 0, missingImages: 0 };
 
   const { style, firmName } = branding;
-  const fonts = PPTX_FONTS[style.font];
+  const fonts = PAIRING_FONTS[style.font];
   const accent = toPptxColor(style.accentColor, "907C67");
   const text = toPptxColor(style.textColor, "907C67");
   const wordmark = style.coverTitle.trim() || firmName;
@@ -194,6 +187,72 @@ export async function exportItemsToPptx(
   items.forEach((it, i) => {
     const slide = pptx.addSlide();
     slide.background = { color: "FFFFFF" };
+
+    // Custom layout: place every element by its absolute page fractions. The
+    // default template below is left untouched (the pixel-matched path).
+    if (style.sheet) {
+      for (const el of layoutSheet(it, style, firmName)) {
+        if (el.t === "text") {
+          slide.addText(el.text, {
+            x: el.x * PAGE_W,
+            y: el.y * PAGE_H,
+            w: el.w * PAGE_W,
+            h: (el.sizePt / 72) * 1.4,
+            fontFace: el.font,
+            fontSize: el.sizePt,
+            color: toPptxColor(el.color, text),
+            bold: el.bold,
+            italic: el.italic,
+            align: el.align,
+            valign: "top",
+          });
+        } else if (el.key === "logo") {
+          if (logo) {
+            const w = el.w * PAGE_W;
+            slide.addImage({
+              data: logo.data,
+              x: el.x * PAGE_W,
+              y: el.y * PAGE_H,
+              w,
+              h: (w * logo.h) / logo.w,
+            });
+          }
+        } else {
+          // photo — contain-fit centered within its box.
+          const bx = el.x * PAGE_W;
+          const by = el.y * PAGE_H;
+          const bw = el.w * PAGE_W;
+          const bh = (el.h ?? 0.4) * PAGE_H;
+          const img = images[i];
+          if (img) {
+            const natW = img.w / CSS_DPI;
+            const natH = img.h / CSS_DPI;
+            const scale = Math.min(bw / natW, bh / natH);
+            const w = natW * scale;
+            const h = natH * scale;
+            slide.addImage({ data: img.data, x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h });
+          } else {
+            if (it.imageUrl.trim()) missingImages++;
+            const scale = Math.min(bw / PH_W, bh / PH_H);
+            const w = PH_W * scale;
+            const h = PH_H * scale;
+            slide.addText("No image", {
+              x: bx + (bw - w) / 2,
+              y: by + (bh - h) / 2,
+              w,
+              h,
+              fill: { color: PH_FILL },
+              fontFace: "Georgia",
+              fontSize: 15 * scale,
+              color: PH_TEXT_COLOR,
+              align: "center",
+              valign: "middle",
+            });
+          }
+        }
+      }
+      return;
+    }
 
     // Logo (or the firm-name wordmark), centered at the top.
     let contentTop = PAD_TOP;

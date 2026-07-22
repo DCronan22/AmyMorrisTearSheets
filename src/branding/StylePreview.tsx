@@ -2,11 +2,14 @@ import type { CSSProperties } from "react";
 import type { FirmStyle } from "../types";
 import { FONT_STACKS } from "../types";
 import { safeLogoUrl } from "../util";
+import SheetView from "./SheetView";
+import { sampleSheetItem } from "./sheetLayout";
 
 /**
  * A small live sample of an exported tear-sheet page in this style — a mini
  * version of the real one-product-per-page layout (TearSheetPrint), so what
- * the editor shows is what printing / PowerPoint actually produces.
+ * the editor shows is what printing / PowerPoint actually produces. When the
+ * firm uses a custom layout, this renders that layout instead.
  */
 export default function StylePreview({
   style,
@@ -23,6 +26,14 @@ export default function StylePreview({
     "--ts-head": fonts.head,
     "--ts-body": fonts.body,
   } as CSSProperties;
+
+  if (style.sheet) {
+    return (
+      <div className="tsp tsp-custom" style={vars}>
+        <SheetView style={style} item={sampleSheetItem()} firmName={firmName} heightPx={420} />
+      </div>
+    );
+  }
 
   return (
     <div className="tsp" style={vars}>

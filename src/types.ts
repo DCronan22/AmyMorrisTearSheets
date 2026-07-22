@@ -59,6 +59,70 @@ export type FontPairing =
   | "editorial"
   | "minimal";
 
+/** Fonts offered per-element in the layout editor. All ship on Windows
+ *  PowerPoint AND browsers, so print/PDF and .pptx render the same family.
+ *  "" = inherit the firm's font pairing (head for the wordmark, body elsewhere). */
+export type SheetFont =
+  | ""
+  | "Georgia"
+  | "Times New Roman"
+  | "Calibri"
+  | "Segoe UI"
+  | "Arial";
+
+/** Per-element text styling on the tear-sheet template. */
+export interface TextStyle {
+  font: SheetFont;
+  size: number; // points
+  color: string; // hex, or "" to inherit (accent for header/footer, text for details)
+  bold: boolean;
+  italic: boolean;
+  align: "left" | "center" | "right";
+}
+
+/** A block's placement, as fractions (0..1) of the 7.5 × 13.333in page. */
+export interface SheetBox {
+  x: number; // left edge
+  y: number; // top edge
+  w: number; // width
+  h: number; // height (used by the photo box; height of text boxes follows content)
+}
+
+/** The text elements a firm can individually style. */
+export type SheetTextKey =
+  | "wordmark"
+  | "room"
+  | "name"
+  | "sku"
+  | "dimensions"
+  | "price"
+  | "leadTime"
+  | "footer";
+
+/**
+ * An opt-in custom tear-sheet layout: where each block sits and how each text
+ * element is styled. A firm whose style has no `sheet` (the default, incl. every
+ * existing firm) keeps the fixed exact-match template — the absolute-positioned
+ * renderer only kicks in once a firm customizes its layout.
+ */
+export interface SheetStyle {
+  logo: SheetBox; // logo image, or the wordmark when no logo
+  photo: SheetBox; // product photo (contain-fit within the box)
+  details: SheetBox; // top-left anchor of the stacked detail lines
+  room: SheetBox;
+  footer: SheetBox;
+  text: Record<SheetTextKey, TextStyle>;
+}
+
+/** Firm pairing → concrete fonts present on Windows PowerPoint AND browsers, so
+ *  the print/PDF and .pptx exports resolve to the same family. */
+export const PAIRING_FONTS: Record<FontPairing, { head: string; body: string }> = {
+  "classic-serif": { head: "Georgia", body: "Calibri" },
+  "modern-sans": { head: "Calibri", body: "Calibri" },
+  editorial: { head: "Georgia", body: "Georgia" },
+  minimal: { head: "Segoe UI", body: "Segoe UI" },
+};
+
 /**
  * A firm's reusable export branding. Drives the printable/PDF tear sheet (and a
  * touch of the on-screen accent). `null` on a firm means "not configured yet",
@@ -78,6 +142,8 @@ export interface FirmStyle {
   showRoom: boolean; // include the room label under the logo
   coverTitle: string; // overrides the cover heading (defaults to firm name)
   footerText: string; // footer tagline (defaults to "{firm} Tear Sheets")
+  /** Opt-in custom layout. null/absent → the fixed exact-match template. */
+  sheet?: SheetStyle | null;
 }
 
 /** The subset of style a sample sheet can be analyzed into (AI auto-detect). */
@@ -129,6 +195,119 @@ export function defaultFirmStyle(): FirmStyle {
     showRoom: false,
     coverTitle: "",
     footerText: "",
+    sheet: null,
+  };
+}
+
+/** A default text style (centered, inheriting font + color) at a given size. */
+function defaultText(size: number): TextStyle {
+  return { font: "", size, color: "", bold: false, italic: false, align: "center" };
+}
+
+/**
+ * The default custom layout — the same geometry as the fixed exact-match
+ * template (measured from Amy Morris's reference decks; page 7.5 × 13.333in),
+ * expressed as page fractions. Seeded into a firm's `sheet` the moment they open
+ * the layout editor, so "customize" starts from today's look.
+ */
+export function defaultSheet(): SheetStyle {
+  return {
+    // logo 4.72in wide, centered, top at 0.5in
+    logo: { x: (7.5 - 4.72) / 2 / 7.5, y: 0.5 / 13.333, w: 4.72 / 7.5, h: 0.06 },
+    // photo full width, upper-middle, ~5.87in tall box (contain-fit)
+    photo: { x: 0, y: 0.3, w: 1, h: 0.44 },
+    // details text box, top at 10.99in, side inset 0.49in
+    details: { x: 0.49 / 7.5, y: 10.99 / 13.333, w: (7.5 - 0.98) / 7.5, h: 0.14 },
+    room: { x: 0.49 / 7.5, y: 0.2, w: (7.5 - 0.98) / 7.5, h: 0.03 },
+    footer: { x: 0.048, y: (13.333 - 0.55) / 13.333, w: 0.904, h: 0.02 },
+    text: {
+      wordmark: defaultText(42),
+      room: defaultText(18),
+      name: defaultText(18),
+      sku: defaultText(18),
+      dimensions: defaultText(18),
+      price: defaultText(18),
+      leadTime: defaultText(18),
+      footer: defaultText(10),
+    },
+  };
+}
+
+const SHEET_TEXT_KEYS: SheetTextKey[] = [
+  "wordmark",
+  "room",
+  "name",
+  "sku",
+  "dimensions",
+  "price",
+  "leadTime",
+  "footer",
+];
+
+const SHEET_FONTS: SheetFont[] = [
+  "",
+  "Georgia",
+  "Times New Roman",
+  "Calibri",
+  "Segoe UI",
+  "Arial",
+];
+
+/** Per-element font options for the layout editor: [stored value, label]. */
+export const SHEET_FONT_LABELS: [SheetFont, string][] = [
+  ["", "Match firm font"],
+  ["Georgia", "Georgia"],
+  ["Times New Roman", "Times New Roman"],
+  ["Calibri", "Calibri"],
+  ["Segoe UI", "Segoe UI"],
+  ["Arial", "Arial"],
+];
+
+/** Coerce an untrusted stored `sheet` into a safe SheetStyle, or null. Member-
+ *  writable jsonb, so every field falls back to the default-sheet value. */
+export function normalizeSheet(raw: unknown): SheetStyle | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const d = defaultSheet();
+  const num = (v: unknown, fb: number, lo: number, hi: number) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fb;
+  const box = (v: unknown, fb: SheetBox): SheetBox => {
+    const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    return {
+      x: num(o.x, fb.x, -0.5, 1.5),
+      y: num(o.y, fb.y, -0.5, 1.5),
+      w: num(o.w, fb.w, 0.02, 2),
+      h: num(o.h, fb.h, 0.01, 2),
+    };
+  };
+  const text = (v: unknown, fb: TextStyle): TextStyle => {
+    const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    const font = SHEET_FONTS.includes(o.font as SheetFont) ? (o.font as SheetFont) : fb.font;
+    const color =
+      typeof o.color === "string" && (o.color === "" || /^#[0-9a-fA-F]{3,8}$/.test(o.color.trim()))
+        ? o.color.trim()
+        : fb.color;
+    const align =
+      o.align === "left" || o.align === "center" || o.align === "right" ? o.align : fb.align;
+    return {
+      font,
+      size: num(o.size, fb.size, 5, 120),
+      color,
+      bold: typeof o.bold === "boolean" ? o.bold : fb.bold,
+      italic: typeof o.italic === "boolean" ? o.italic : fb.italic,
+      align,
+    };
+  };
+  const rt = (r.text && typeof r.text === "object" ? r.text : {}) as Record<string, unknown>;
+  const textOut = {} as Record<SheetTextKey, TextStyle>;
+  for (const k of SHEET_TEXT_KEYS) textOut[k] = text(rt[k], d.text[k]);
+  return {
+    logo: box(r.logo, d.logo),
+    photo: box(r.photo, d.photo),
+    details: box(r.details, d.details),
+    room: box(r.room, d.room),
+    footer: box(r.footer, d.footer),
+    text: textOut,
   };
 }
 
@@ -171,6 +350,7 @@ export function normalizeFirmStyle(raw: unknown): FirmStyle {
     showRoom: bool(r.showRoom, d.showRoom),
     coverTitle: str(r.coverTitle, d.coverTitle),
     footerText: str(r.footerText, d.footerText),
+    sheet: normalizeSheet(r.sheet),
   };
 }
 

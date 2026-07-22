@@ -1232,6 +1232,11 @@ a.btn {
     page-break-after: auto;
     break-after: auto;
   }
+  /* Custom-layout pages position every element absolutely (no flow padding). */
+  .ts-page.ts-custom {
+    padding: 0;
+    display: block;
+  }
   .ts-logo {
     width: 4.72in;
     height: auto;
@@ -1787,6 +1792,173 @@ a.btn {
   font-size: 7.5px;
   letter-spacing: 0.05em;
   color: var(--ts-accent, #6d6047);
+}
+
+/* --- Custom-layout page (SheetView), shared by preview + editor + print --- */
+.sv-photo {
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sv-photo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sv-logo {
+  position: absolute;
+  height: auto;
+  object-fit: contain;
+}
+/* The custom preview is a positioned page box (SheetView places children by %). */
+.tsp-custom {
+  aspect-ratio: 7.5 / 13.333;
+  height: 420px;
+  width: auto;
+  padding: 0;
+  display: block;
+}
+
+/* --- Custom layout editor --------------------------------------- */
+.sheet-editor {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+@media (max-width: 900px) {
+  .sheet-editor {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+.sheet-canvas {
+  position: relative;
+  aspect-ratio: 7.5 / 13.333;
+  height: 460px;
+  flex: 0 0 auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.sheet-frame {
+  position: absolute;
+  border: 1px dashed rgba(120, 110, 90, 0.5);
+  border-radius: 3px;
+  cursor: move;
+  box-sizing: border-box;
+}
+.sheet-frame:hover {
+  border-color: var(--accent);
+  background: rgba(144, 124, 103, 0.08);
+}
+.sheet-frame.active {
+  border: 1.5px solid var(--accent);
+  background: rgba(144, 124, 103, 0.12);
+}
+.sheet-resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 13px;
+  height: 13px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: nwse-resize;
+}
+.sheet-panel {
+  flex: 1 1 auto;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sheet-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.sheet-panel .style-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+.sheet-panel .style-field.narrow {
+  flex: 0 0 auto;
+  width: 74px;
+}
+.sheet-panel .style-field > span {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sheet-panel input,
+.sheet-panel select {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  width: 100%;
+}
+.sheet-panel input[type="color"] {
+  padding: 2px;
+  height: 34px;
+}
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.checkbox-inline input {
+  width: auto !important;
+}
+.sheet-align {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.sheet-align button {
+  border: none;
+  background: transparent;
+  padding: 7px 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.sheet-align button + button {
+  border-left: 1px solid var(--line);
+}
+.sheet-align button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.style-custom-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  cursor: pointer;
+}
+.style-custom-toggle input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.style-body.editing-layout {
+  grid-template-columns: 1fr;
+}
+.style-modal.wide-layout {
+  max-width: 960px;
+  width: 94vw;
 }
 
 /* ============================================================

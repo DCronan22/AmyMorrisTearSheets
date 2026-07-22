@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import type { FirmStyle, Item, Project } from "../types";
 import { FONT_STACKS } from "../types";
 import { onImgError, priceLine, safeImageUrl, safeLogoUrl } from "../util";
+import { layoutSheet } from "../branding/sheetLayout";
+import type { SheetEl } from "../branding/sheetLayout";
 
 interface Props {
   project: Project;
@@ -28,6 +30,23 @@ interface Props {
  */
 function TearSheetPrint({ project, style, firmName, items }: Props) {
   const list = items ?? project.items;
+
+  // Firms with a custom layout print via the absolute-positioned renderer; the
+  // default template below is left exactly as-is (the pixel-matched path).
+  if (style.sheet) {
+    return (
+      <div className="ts-print-root" aria-hidden>
+        {list.map((it) => (
+          <section className="ts-page ts-custom" key={it.id}>
+            {layoutSheet(it, style, firmName).map((el, i) => (
+              <PrintEl el={el} key={i} />
+            ))}
+          </section>
+        ))}
+      </div>
+    );
+  }
+
   const fonts = FONT_STACKS[style.font];
   const vars = {
     "--ts-accent": style.accentColor,
@@ -75,6 +94,44 @@ function TearSheetPrint({ project, style, firmName, items }: Props) {
           {footer && <p className="ts-footer">{footer}</p>}
         </section>
       ))}
+    </div>
+  );
+}
+
+/** One custom-layout element on a print page — positions in %, sizes in pt so
+ *  the physical print matches what the editor shows. */
+function PrintEl({ el }: { el: SheetEl }) {
+  const base: CSSProperties = {
+    position: "absolute",
+    left: `${el.x * 100}%`,
+    top: `${el.y * 100}%`,
+    width: `${el.w * 100}%`,
+  };
+  if (el.t === "image") {
+    if (el.key === "photo") {
+      return (
+        <div className="sv-photo" style={{ ...base, height: `${(el.h ?? 0.4) * 100}%` }}>
+          <img src={el.src} alt="" onError={onImgError} />
+        </div>
+      );
+    }
+    return <img className="sv-logo" style={base} src={el.src} alt="" />;
+  }
+  return (
+    <div
+      style={{
+        ...base,
+        fontFamily: el.font,
+        fontSize: `${el.sizePt}pt`,
+        color: el.color,
+        fontWeight: el.bold ? 700 : 400,
+        fontStyle: el.italic ? "italic" : "normal",
+        textAlign: el.align,
+        lineHeight: 1,
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      {el.text}
     </div>
   );
 }

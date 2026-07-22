@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import type { Firm, FirmStyle } from "../types";
-import { FONT_STACKS, defaultFirmStyle } from "../types";
+import type { Firm, FirmStyle, SheetStyle } from "../types";
+import { FONT_STACKS, defaultFirmStyle, defaultSheet } from "../types";
 import { saveFirmStyle } from "../data/firmStyle";
 import { compressImageFile, compressLogoFile } from "../lib/extract";
 import { detectStyleFromSample } from "../lib/styleDetect";
 import { safeLogoUrl } from "../util";
 import StylePreview from "./StylePreview";
+import SheetLayoutEditor from "./SheetLayoutEditor";
 
 interface Props {
   firm: Firm;
@@ -46,6 +47,16 @@ export default function StyleEditor({
   function set<K extends keyof FirmStyle>(k: K, v: FirmStyle[K]) {
     setDraft((d) => ({ ...d, [k]: v }));
   }
+
+  // Custom layout is opt-in: turning it on seeds today's exact-match template
+  // as the starting point; turning it off reverts to the fixed template.
+  function toggleCustomLayout(on: boolean) {
+    setDraft((d) => ({ ...d, sheet: on ? d.sheet ?? defaultSheet() : null }));
+  }
+  function setSheet(sheet: SheetStyle) {
+    setDraft((d) => ({ ...d, sheet }));
+  }
+  const customLayout = Boolean(draft.sheet);
 
   async function onLogoPick(file: File | undefined) {
     if (!file) return;
@@ -101,7 +112,7 @@ export default function StyleEditor({
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal style-modal">
+      <div className={`modal style-modal${customLayout ? " wide-layout" : ""}`}>
         <header className="style-head">
           <div>
             <h2>{onboarding ? `Set up ${firm.name}'s tear sheet style` : "Tear sheet style"}</h2>
@@ -116,7 +127,7 @@ export default function StyleEditor({
           </button>
         </header>
 
-        <div className="style-body">
+        <div className={`style-body${customLayout ? " editing-layout" : ""}`}>
           <div className="style-controls">
             {/* AI sample auto-detect (dormant until enabled) */}
             <section className="style-sample">
@@ -263,12 +274,39 @@ export default function StyleEditor({
                 />
               </label>
             </div>
+
+            <hr className="style-sep" />
+
+            <label className="style-custom-toggle">
+              <input
+                type="checkbox"
+                checked={customLayout}
+                onChange={(e) => toggleCustomLayout(e.target.checked)}
+              />
+              <span>
+                <strong>Custom layout (advanced)</strong>
+                <br />
+                Move each block and set the font, size, color, and alignment of
+                every line. Starts from your current look; turn off to return to
+                the standard template.
+              </span>
+            </label>
           </div>
 
-          {/* Live preview */}
+          {/* Live preview, or the interactive layout editor when customizing */}
           <div className="style-preview-pane">
-            <span className="muted small">Preview</span>
-            <StylePreview style={draft} firmName={firm.name} />
+            <span className="muted small">
+              {customLayout ? "Layout — drag blocks, style each line" : "Preview"}
+            </span>
+            {customLayout && draft.sheet ? (
+              <SheetLayoutEditor
+                style={draft}
+                firmName={firm.name}
+                onChange={setSheet}
+              />
+            ) : (
+              <StylePreview style={draft} firmName={firm.name} />
+            )}
           </div>
         </div>
 
