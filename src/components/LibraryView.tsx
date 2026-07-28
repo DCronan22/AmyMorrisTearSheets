@@ -78,7 +78,7 @@ export default function LibraryView({
           <button
             className="btn"
             onClick={onImport}
-            title="Import items from a spreadsheet or PowerPoint file"
+            title="Import items from a spreadsheet, PowerPoint, or PDF file"
           >
             Import
           </button>

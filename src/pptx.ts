@@ -95,7 +95,7 @@ export async function parsePptx(file: File): Promise<ImportResult> {
   return { items, matchedColumns: [...fieldsSeen], skippedRows: skipped };
 }
 
-interface ParsedSlide {
+export interface ParsedSlide {
   name: string;
   room: string;
   dimensions: string;
@@ -119,8 +119,17 @@ const isPlaceholder = (t: string) => !t || PLACEHOLDER_RE.test(t.trim());
 
 /** Parse one slide's XML into tear-sheet fields. Exported for testing. */
 export function parseSlide(xml: string): ParsedSlide {
-  const lines = textLines(xml);
+  return parseTearSheetLines(textLines(xml));
+}
 
+/**
+ * Turn the ordered text lines of a single tear sheet — whether they came from a
+ * PowerPoint slide or a PDF page — into structured fields. The Amy Morris
+ * template layout (name, then labelled Dimensions/Price/Lead Time/Room lines)
+ * drives the matching; the PDF importer reuses this so both formats behave the
+ * same. Exported for testing.
+ */
+export function parseTearSheetLines(lines: string[]): ParsedSlide {
   let dimensions = "";
   let leadTime = "";
   let priceLine = "";

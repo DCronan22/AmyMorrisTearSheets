@@ -14,8 +14,8 @@ interface Props {
 
 // Files we can actually parse. Anything else is rejected up front with a clear
 // message instead of being handed to a parser that would throw something cryptic.
-const SUPPORTED = /\.(xlsx|xls|csv|pptx)$/i;
-const ACCEPT = ".xlsx,.xls,.csv,.pptx";
+const SUPPORTED = /\.(xlsx|xls|csv|pptx|pdf)$/i;
+const ACCEPT = ".xlsx,.xls,.csv,.pptx,.pdf";
 // Per-file guard. xlsx/pptx are zipped, so even large photo-heavy decks stay
 // well under this; it's really just here to stop someone dropping a giant file
 // (e.g. a 500 MB video) and freezing the tab while the browser tries to parse it.
@@ -98,7 +98,7 @@ export default function ImportPanel({
       setBusy(false);
       if (supported.length === 0) {
         setError(
-          "No Excel, CSV, or PowerPoint files were found. Folders are searched all the way down, so double-check the files are really in there."
+          "No Excel, CSV, PowerPoint, or PDF files were found. Folders are searched all the way down, so double-check the files are really in there."
         );
       } else if (tooBig.length > 0) {
         setError(
@@ -130,16 +130,23 @@ export default function ImportPanel({
     for (let i = 0; i < usable.length; i++) {
       const file = usable[i];
       const isPptx = /\.pptx$/i.test(file.name);
+      const isPdf = /\.pdf$/i.test(file.name);
       setStatus(
         many
           ? `Reading file ${i + 1} of ${usable.length}: “${file.name}”…`
           : isPptx
           ? `Reading slides from “${file.name}”…`
+          : isPdf
+          ? `Reading pages from “${file.name}”…`
           : `Reading “${file.name}”…`
       );
       try {
         const result = isPptx
           ? await parsePptx(file)
+          : isPdf
+          ? // Lazy-load the PDF parser (and its sizeable pdf.js worker) only when
+            // a PDF is actually imported, keeping it out of the initial bundle.
+            await (await import("../pdf")).parsePdf(file)
           : await parseSpreadsheet(file);
         for (const it of result.items) allItems.push(it);
         for (const c of result.matchedColumns) matchedSet.add(c);
@@ -155,8 +162,8 @@ export default function ImportPanel({
       setStatus(null);
       setError(
         many
-          ? `We read ${usable.length} files but couldn’t pull any items out. For PowerPoint, each slide should have the product name, dimensions, price, and lead time.`
-          : "No tear sheets found in that file. Each slide should have the product name, dimensions, price, and lead time — or, for a spreadsheet, headers like Item, Vendor, and Price."
+          ? `We read ${usable.length} files but couldn’t pull any items out. For PowerPoint or PDF, each slide/page should have the product name, dimensions, price, and lead time.`
+          : "No tear sheets found in that file. Each slide or page should have the product name, dimensions, price, and lead time — or, for a spreadsheet, headers like Item, Vendor, and Price."
       );
       return;
     }
@@ -187,9 +194,7 @@ export default function ImportPanel({
       );
     if (unsupported)
       skips.push(
-        `${unsupported} non-spreadsheet/PowerPoint file${
-          unsupported === 1 ? "" : "s"
-        }`
+        `${unsupported} unsupported file${unsupported === 1 ? "" : "s"}`
       );
     setNote(skips.length ? `Skipped ${skips.join(", ")}.` : null);
   }
@@ -379,8 +384,8 @@ export default function ImportPanel({
                 >
                   Choose a folder
                 </button>{" "}
-                — every PowerPoint inside it (and any sub-folders) is imported at
-                once.
+                — every PowerPoint and PDF inside it (and any sub-folders) is
+                imported at once.
                 <input
                   ref={attachFolderInput}
                   type="file"
@@ -405,10 +410,10 @@ export default function ImportPanel({
                 Download a blank template
               </button>
               <br />
-              <strong>PowerPoint (.pptx):</strong> every slide in every deck
-              becomes an item — the product name, dimensions, price, lead time,
-              room, and photo are pulled from each slide automatically. Drop or
-              choose a folder to import many decks at once.
+              <strong>PowerPoint (.pptx) &amp; PDF (.pdf):</strong> every slide
+              or page becomes an item — the product name, dimensions, price, lead
+              time, room, and photo are pulled from each one automatically. Drop
+              or choose a folder to import many files at once.
             </p>
           </>
         )}
