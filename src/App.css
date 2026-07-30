@@ -1477,7 +1477,16 @@ a.btn {
 
 .admin-add {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Sits on its own line under the name box + button. */
+.admin-add-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12.5px;
 }
 
 .admin-add input {

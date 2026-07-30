@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../components/ConfirmProvider";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
 import {
@@ -33,6 +33,9 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newFirmName, setNewFirmName] = useState("");
+  const [addingFirm, setAddingFirm] = useState(false);
+  const [addHint, setAddHint] = useState<string | null>(null);
+  const firmNameInput = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -57,13 +60,18 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
     return profiles.filter((p) => p.firm_id === firmId).length;
   }
 
-  async function guard(fn: () => Promise<unknown>) {
+  /** Runs an admin action, refreshes the tables, and surfaces any failure. */
+  async function guard(fn: () => Promise<unknown>): Promise<boolean> {
     setError(null);
     try {
       await fn();
       await reload();
+      return true;
     } catch (e) {
+      // Also log it: the on-screen message is for the admin, this is for us.
+      console.error("Admin action failed:", e);
       setError(e instanceof Error ? e.message : "Action failed.");
+      return false;
     }
   }
 
@@ -96,20 +104,44 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
               <h2>Firms ({firms.length})</h2>
               <form
                 className="admin-add"
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
+                  if (addingFirm) return;
                   const name = newFirmName.trim();
-                  if (!name) return;
-                  guard(() => createFirm(name));
-                  setNewFirmName("");
+                  // Never fail silently: an empty box used to make this button
+                  // look broken, because the handler just returned.
+                  if (!name) {
+                    setAddHint("Type a firm name here first, then + Add firm.");
+                    firmNameInput.current?.focus();
+                    return;
+                  }
+                  setAddHint(null);
+                  setAddingFirm(true);
+                  try {
+                    // Only clear the box on success, so a failed add doesn't
+                    // throw away what was typed.
+                    if (await guard(() => createFirm(name))) setNewFirmName("");
+                  } finally {
+                    setAddingFirm(false);
+                  }
                 }}
               >
                 <input
+                  ref={firmNameInput}
                   placeholder="New firm name…"
                   value={newFirmName}
-                  onChange={(e) => setNewFirmName(e.target.value)}
+                  disabled={addingFirm}
+                  onChange={(e) => {
+                    setNewFirmName(e.target.value);
+                    if (addHint) setAddHint(null);
+                  }}
                 />
-                <button className="btn primary small">+ Add firm</button>
+                <button className="btn primary small" disabled={addingFirm}>
+                  {addingFirm ? "Adding…" : "+ Add firm"}
+                </button>
+                {addHint && (
+                  <p className="status-err admin-add-hint">{addHint}</p>
+                )}
               </form>
             </div>
 
