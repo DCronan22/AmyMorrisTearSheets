@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { offloadDataUrl, isDataUrlImage } from "../lib/imageStore";
 import type { InventoryItem, LibraryItem } from "../types";
-import { itemToLibrary, sanitizeItem } from "../types";
+import { itemToLibrary, sanitizeItem, syncStockPricing } from "../types";
 
 // The firm's physical inventory. Each row stores one product spec as a jsonb
 // `data` blob (same shape as a library item) plus an on-hand `quantity` column.
@@ -49,19 +49,22 @@ function coerceQuantity(v: unknown): number {
 function rowToInventory(row: InventoryRow): InventoryItem {
   // The data blob is member-written jsonb — run it through the shared item
   // sanitizer, then keep the row's own uuid and quantity column as truth.
-  return {
+  return syncStockPricing({
     id: row.id,
     ...itemToLibrary(sanitizeItem(row.data)),
     quantity: coerceQuantity(row.quantity),
-  };
+  });
 }
 
-// The jsonb payload — the product spec only. The id lives in its own column
-// and the quantity in its own column, so strip both defensively.
+// The jsonb payload — the product spec plus its stock details. The id lives in
+// its own column and the quantity in its own column, so strip both defensively.
+// Pieces copied in from the database arrive with a plain `price` and no retail
+// price, so the write is normalized here (one place every insert/update passes
+// through) rather than at each call site.
 function inventoryToData(li: Omit<LibraryItem, "id">): Omit<LibraryItem, "id"> {
-  const { id: _id, quantity: _qty, ...data } = li as LibraryItem & {
-    quantity?: number;
-  };
+  const { id: _id, quantity: _qty, ...data } = syncStockPricing(
+    li as LibraryItem & { quantity?: number }
+  );
   void _id;
   void _qty;
   return data;

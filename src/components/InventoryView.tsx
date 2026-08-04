@@ -1,9 +1,41 @@
-import { useCallback } from "react";
+import { Fragment, useCallback } from "react";
 import type { InventoryItem } from "../types";
 import ItemCard from "./ItemCard";
 import type { CardItem } from "./ItemCard";
 import CatalogFilterBar from "./CatalogFilterBar";
 import { hasActiveFilter, useCatalogFilter } from "./useCatalogFilter";
+import { formatDate, formatPrice } from "../util";
+
+/**
+ * The stock details under an inventory card — acquisition date, the firm's own
+ * numbers, and the cost side of the price. Rows are omitted when unset, so an
+ * entry with none of them looks exactly as it did before.
+ */
+function StockDetails({ inv }: { inv: InventoryItem }) {
+  const rows: [string, string][] = [];
+  if (inv.inventoryNumber) rows.push(["Inv #", inv.inventoryNumber]);
+  if (inv.poNumber) rows.push(["PO #", inv.poNumber]);
+  if (inv.acquiredDate) rows.push(["Acquired", formatDate(inv.acquiredDate)]);
+  // The card's own price line already shows the retail figure, so the two are
+  // only spelled out when there's a cost to compare it against.
+  if (inv.netPrice !== null && inv.netPrice !== undefined) {
+    rows.push(["Net", formatPrice(inv.netPrice)]);
+    if (inv.retailPrice !== null && inv.retailPrice !== undefined) {
+      rows.push(["Retail", formatPrice(inv.retailPrice)]);
+    }
+  }
+  if (!rows.length) return null;
+  return (
+    <dl className="card-specs inv-meta">
+      {rows.map(([label, value]) => (
+        <Fragment key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
 
 interface Props {
   inventory: InventoryItem[];
@@ -163,41 +195,44 @@ export default function InventoryView({
                 onEdit={handleEdit}
                 onDelete={onDelete}
                 extraControl={
-                  <div className="inv-qty">
-                    <span
-                      className={`inv-qty-badge${
-                        inv.quantity === 0 ? " out" : ""
-                      }`}
-                    >
-                      {inv.quantity === 0
-                        ? "Out of stock"
-                        : `${inv.quantity} in stock`}
-                    </span>
-                    <span className="inv-qty-stepper">
-                      <button
-                        type="button"
-                        onClick={() => onSetQuantity(inv, inv.quantity - 1)}
-                        disabled={inv.quantity === 0}
-                        aria-label={`Decrease quantity of ${
-                          inv.name || "item"
+                  <>
+                    <StockDetails inv={inv} />
+                    <div className="inv-qty">
+                      <span
+                        className={`inv-qty-badge${
+                          inv.quantity === 0 ? " out" : ""
                         }`}
-                        title="Decrease quantity"
                       >
-                        −
-                      </button>
-                      <span className="inv-qty-num">{inv.quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => onSetQuantity(inv, inv.quantity + 1)}
-                        aria-label={`Increase quantity of ${
-                          inv.name || "item"
-                        }`}
-                        title="Increase quantity"
-                      >
-                        +
-                      </button>
-                    </span>
-                  </div>
+                        {inv.quantity === 0
+                          ? "Out of stock"
+                          : `${inv.quantity} in stock`}
+                      </span>
+                      <span className="inv-qty-stepper">
+                        <button
+                          type="button"
+                          onClick={() => onSetQuantity(inv, inv.quantity - 1)}
+                          disabled={inv.quantity === 0}
+                          aria-label={`Decrease quantity of ${
+                            inv.name || "item"
+                          }`}
+                          title="Decrease quantity"
+                        >
+                          −
+                        </button>
+                        <span className="inv-qty-num">{inv.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => onSetQuantity(inv, inv.quantity + 1)}
+                          aria-label={`Increase quantity of ${
+                            inv.name || "item"
+                          }`}
+                          title="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </span>
+                    </div>
+                  </>
                 }
               />
             ))}

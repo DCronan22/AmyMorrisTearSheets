@@ -1,7 +1,29 @@
 // Core data model for the Amy Morris Interiors tear sheet tool.
 
+/**
+ * Stock / purchasing details that belong to a physical inventory entry: when it
+ * was acquired, what it cost, what it sells for, and the paperwork it came in
+ * on. Optional on every item type so client-project items and database entries
+ * are untouched — only the Inventory view reads or writes them.
+ */
+export interface StockFields {
+  /** ISO yyyy-mm-dd — the date the piece was purchased / received. */
+  acquiredDate?: string;
+  /** What the firm paid per unit. */
+  netPrice?: number | null;
+  /**
+   * The client-facing price per unit. `price` mirrors it, so cards, tear sheets
+   * and exports keep reading the one existing price field.
+   */
+  retailPrice?: number | null;
+  /** The firm's own stock tag, e.g. "INV-1042". Free text. */
+  inventoryNumber?: string;
+  /** The purchase order this piece arrived on. */
+  poNumber?: string;
+}
+
 /** A single specified product / furnishing on a tear sheet. */
-export interface Item {
+export interface Item extends StockFields {
   id: string;
   name: string;        // Product name, e.g. "Lawson Sofa"
   vendor: string;      // Manufacturer / supplier
@@ -462,7 +484,68 @@ export function sanitizeItem(raw: unknown, opts?: { keepId?: boolean }): Item {
   item.imageUrl = str(r.imageUrl);
   item.productUrl = str(r.productUrl);
   item.upholstered = typeof r.upholstered === "boolean" ? r.upholstered : true;
-  return item;
+  return { ...item, ...sanitizeStockFields(raw) };
+}
+
+/**
+ * Pull the inventory stock fields out of untrusted data (a jsonb blob, an item
+ * being converted between shapes). Blank / wrong-typed values are simply left
+ * off, so an item that never had stock details stays exactly as it was.
+ */
+/** True for a real yyyy-mm-dd date — the shape AND the day actually existing,
+ *  so "2026-02-30" and "2026-13-45" are rejected rather than rolling over. */
+export function isCalendarDate(v: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!m) return false;
+  const [y, mo, d] = [+m[1], +m[2], +m[3]];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === mo - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+export function sanitizeStockFields(raw: unknown): StockFields {
+  const out: StockFields = {};
+  if (!raw || typeof raw !== "object") return out;
+  const r = raw as Record<string, unknown>;
+  const money = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  // Pinned to a real calendar date, matching how sanitizeProject treats a
+  // project's date — the date picker only ever produces this, and a hand-edited
+  // backup shouldn't be able to store "2026-13-45" (or arbitrary text) as one.
+  if (typeof r.acquiredDate === "string" && isCalendarDate(r.acquiredDate.trim())) {
+    out.acquiredDate = r.acquiredDate.trim();
+  }
+  if (money(r.netPrice) !== null) out.netPrice = money(r.netPrice);
+  if (money(r.retailPrice) !== null) out.retailPrice = money(r.retailPrice);
+  if (typeof r.inventoryNumber === "string" && r.inventoryNumber.trim()) {
+    out.inventoryNumber = r.inventoryNumber.trim();
+  }
+  if (typeof r.poNumber === "string" && r.poNumber.trim()) {
+    out.poNumber = r.poNumber.trim();
+  }
+  return out;
+}
+
+/**
+ * Keep an inventory entry's two prices consistent. `retailPrice` is the
+ * client-facing number and `price` mirrors it, so the gallery cards, the
+ * tear-sheet price line and the PowerPoint/PDF exports keep reading the single
+ * `price` field they always have. Entries saved before the net/retail split —
+ * and pieces copied in from the database — carry only `price`, so it is adopted
+ * as the retail price.
+ *
+ * That fallback is why anything that clears the retail price MUST clear `price`
+ * in the same update (see setRetailPrice in ItemEditor) — drop the retail price
+ * on its own and the old number is resurrected here from its own mirror.
+ */
+export function syncStockPricing<T extends { price: number | null } & StockFields>(
+  entry: T
+): T {
+  const retail = entry.retailPrice ?? entry.price ?? null;
+  return { ...entry, retailPrice: retail, price: retail };
 }
 
 /**
@@ -471,7 +554,7 @@ export function sanitizeItem(raw: unknown, opts?: { keepId?: boolean }): Item {
  * client/project (the same chair can be "Living Room" for one client and "Den"
  * for another, in different quantities).
  */
-export interface LibraryItem {
+export interface LibraryItem extends StockFields {
   id: string;
   name: string;
   vendor: string;
@@ -492,6 +575,9 @@ export interface LibraryItem {
 /** Promote a project item to a library entry (drops id/room/quantity). */
 export function itemToLibrary(it: Item): Omit<LibraryItem, "id"> {
   return {
+    // Stock details ride along so an inventory entry survives the round trip
+    // through the shared item editor; client items simply have none.
+    ...sanitizeStockFields(it),
     name: it.name,
     vendor: it.vendor,
     collection: it.collection,
@@ -517,6 +603,7 @@ export function itemToLibrary(it: Item): Omit<LibraryItem, "id"> {
 export function libraryToItem(li: LibraryItem): Item {
   return {
     ...emptyItem(),
+    ...sanitizeStockFields(li),
     name: li.name,
     vendor: li.vendor,
     collection: li.collection,
@@ -552,6 +639,19 @@ export function inventoryToItem(inv: InventoryItem): Item {
   return {
     ...libraryToItem(inv),
     quantity: Math.max(1, inv.quantity),
+  };
+}
+
+/**
+ * Open an inventory entry in the shared item editor. Unlike inventoryToItem
+ * this keeps the entry's own id and its real on-hand count — including zero, which
+ * the printable conversion floors at 1 — because the editor writes both back.
+ */
+export function inventoryToDraft(inv: InventoryItem): Item {
+  return {
+    ...inventoryToItem(inv),
+    id: inv.id,
+    quantity: Math.max(0, inv.quantity),
   };
 }
 

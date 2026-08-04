@@ -24,6 +24,14 @@ const HEADER_ALIASES: Record<keyof Item, string[]> = {
   productUrl: ["product url", "url", "link", "product link", "website", "web"],
   // Not imported from spreadsheets; set via the item editor (defaults to true).
   upholstered: [],
+  // Inventory stock details. Imports land in a client project or the database,
+  // never in the inventory, so there's nothing to map these onto — they're set
+  // in the inventory item editor.
+  acquiredDate: [],
+  netPrice: [],
+  retailPrice: [],
+  inventoryNumber: [],
+  poNumber: [],
 };
 
 // Defensive caps so a pathological upload (a 500k-row export, a cell holding a

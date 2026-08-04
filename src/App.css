@@ -568,6 +568,29 @@ a.btn {
   letter-spacing: normal;
   font-size: 13px;
 }
+/* Section divider inside a form (e.g. the inventory stock details). A div, not
+   a span, so it escapes the label-caption styling below. */
+.form-grid .form-section {
+  grid-column: 1 / -1;
+  margin: 4px 0 -2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+/* Always the last element of a form section, so it carries the closing rule —
+   otherwise the fields that follow read as part of the section above them. */
+.form-grid .form-note {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
 .form-grid span {
   font-size: 11.5px;
   letter-spacing: 0.08em;
@@ -2055,6 +2078,13 @@ a.btn {
 }
 
 /* Quantity badge + stepper on inventory cards. */
+/* Stock details under an inventory card — the same two-column spec grid as the
+   product specs above it, set off by a light rule. */
+.inv-meta {
+  margin-bottom: 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
 .inv-qty {
   display: flex;
   align-items: center;

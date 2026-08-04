@@ -19,6 +19,12 @@ interface Props {
    * per-client Room and Quantity fields (those belong to a project).
    */
   libraryMode?: boolean;
+  /**
+   * Editing a physical inventory entry: adds the stock details (date acquired,
+   * on-hand quantity, net + retail price, inventory number, PO number) and
+   * replaces the single "Price (each)" field with the net/retail pair.
+   */
+  inventoryMode?: boolean;
   /** Overrides the modal heading (e.g. "Edit inventory item"). */
   heading?: string;
   /** Existing vendor values across the catalog, for the vendor dropdown. */
@@ -36,6 +42,7 @@ export default function ItemEditor({
   onDuplicate,
   onSaveToLibrary,
   libraryMode = false,
+  inventoryMode = false,
   heading,
   vendorOptions = [],
   categoryOptions = [],
@@ -49,6 +56,21 @@ export default function ItemEditor({
   function set<K extends keyof Item>(key: K, value: Item[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
+
+  // The retail price is the client-facing number, and `price` mirrors it so the
+  // cards, tear sheets and exports keep reading the one price field — set both
+  // together, or a cleared retail price would be resurrected from `price`.
+  function setRetailPrice(value: number | null) {
+    setDraft((d) => ({ ...d, retailPrice: value, price: value }));
+  }
+
+  // "" for an unset number field, so the input renders empty rather than "0".
+  const numValue = (v: number | null | undefined) =>
+    v === null || v === undefined ? "" : v;
+  const toNum = (raw: string): number | null => {
+    const n = Number(raw);
+    return raw.trim() === "" || !Number.isFinite(n) ? null : n;
+  };
 
   // Merge extracted fields in, filling blanks and updating provided values
   // without wiping anything the extractor didn't return.
@@ -68,7 +90,12 @@ export default function ItemEditor({
       put("color", fields.color);
       put("imageUrl", fields.imageUrl);
       put("productUrl", fields.productUrl);
-      if (typeof fields.price === "number") next.price = fields.price;
+      if (typeof fields.price === "number") {
+        next.price = fields.price;
+        // An extracted price is the vendor's asking price — the retail side of
+        // an inventory entry, not what the firm paid.
+        if (inventoryMode) next.retailPrice = fields.price;
+      }
       return next;
     });
   }
@@ -198,7 +225,7 @@ export default function ItemEditor({
             options={categoryOptions}
             placeholder="Seating, Lighting, Rug…"
           />
-          {!libraryMode && (
+          {!libraryMode && !inventoryMode && (
             <label>
               <span>Room</span>
               <input value={draft.room} onChange={(e) => set("room", e.target.value)} />
@@ -209,17 +236,19 @@ export default function ItemEditor({
             <input value={draft.sku} onChange={(e) => set("sku", e.target.value)} />
           </label>
 
-          <label>
-            <span>Price (each)</span>
-            <input
-              type="number"
-              value={draft.price ?? ""}
-              onChange={(e) =>
-                set("price", e.target.value === "" ? null : Number(e.target.value))
-              }
-            />
-          </label>
-          {!libraryMode && (
+          {/* Inventory entries price in two parts (net = cost, retail =
+              client-facing); everywhere else there's a single price. */}
+          {!inventoryMode && (
+            <label>
+              <span>Price (each)</span>
+              <input
+                type="number"
+                value={numValue(draft.price)}
+                onChange={(e) => set("price", toNum(e.target.value))}
+              />
+            </label>
+          )}
+          {!libraryMode && !inventoryMode && (
           <label>
             <span>Quantity</span>
             <input
@@ -229,6 +258,67 @@ export default function ItemEditor({
               onChange={(e) => set("quantity", Math.max(1, Number(e.target.value) || 1))}
             />
           </label>
+          )}
+
+          {inventoryMode && (
+            <>
+              <h3 className="form-section">Stock details</h3>
+              <label>
+                <span>Date acquired</span>
+                <input
+                  type="date"
+                  value={draft.acquiredDate ?? ""}
+                  onChange={(e) => set("acquiredDate", e.target.value)}
+                />
+              </label>
+              <label>
+                <span>Quantity on hand</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.quantity}
+                  onChange={(e) =>
+                    set("quantity", Math.max(0, Math.floor(Number(e.target.value) || 0)))
+                  }
+                />
+              </label>
+              <label>
+                <span>Net price (your cost)</span>
+                <input
+                  type="number"
+                  value={numValue(draft.netPrice)}
+                  onChange={(e) => set("netPrice", toNum(e.target.value))}
+                />
+              </label>
+              <label>
+                <span>Retail price (each)</span>
+                <input
+                  type="number"
+                  value={numValue(draft.retailPrice)}
+                  onChange={(e) => setRetailPrice(toNum(e.target.value))}
+                />
+              </label>
+              <label>
+                <span>Inventory number</span>
+                <input
+                  value={draft.inventoryNumber ?? ""}
+                  onChange={(e) => set("inventoryNumber", e.target.value)}
+                  placeholder="INV-1042"
+                />
+              </label>
+              <label>
+                <span>Purchase order number</span>
+                <input
+                  value={draft.poNumber ?? ""}
+                  onChange={(e) => set("poNumber", e.target.value)}
+                  placeholder="PO-2291"
+                />
+              </label>
+              <p className="form-note">
+                The retail price is what appears on tear sheets and exports; the
+                net price stays internal to your team.
+              </p>
+            </>
           )}
 
           <label>
@@ -356,7 +446,11 @@ export default function ItemEditor({
             Cancel
           </button>
           <button className="btn primary" onClick={() => onSave(draft)}>
-            {libraryMode ? "Save to database" : "Save item"}
+            {inventoryMode
+              ? "Save item"
+              : libraryMode
+                ? "Save to database"
+                : "Save item"}
           </button>
         </div>
       </div>

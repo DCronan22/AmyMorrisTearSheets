@@ -1,5 +1,6 @@
 import type { SyntheticEvent } from "react";
 import type { Item } from "./types";
+import { isCalendarDate } from "./types";
 import { parseTags, tagsInclude } from "./lib/tags";
 
 /** Format a price as USD; blank when null. */
@@ -10,6 +11,27 @@ export function formatPrice(p: number | null): string {
     currency: "USD",
     minimumFractionDigits: p % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Format a stored ISO date (yyyy-mm-dd) for display, e.g. "Mar 4, 2026". Parsed
+ * as UTC so a plain date never slips a day west of Greenwich; anything that
+ * isn't an ISO date is shown exactly as typed.
+ */
+export function formatDate(iso: string | undefined | null): string {
+  if (!iso) return "";
+  const v = iso.trim();
+  // Shape alone isn't enough: Date.UTC happily rolls "2026-13-45" over into the
+  // next year, which would display a date nobody typed.
+  if (!isCalendarDate(v)) return iso;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)!;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -72,6 +94,9 @@ export interface Filterable {
   sku: string;
   material: string;
   color: string;
+  /** Inventory-only, so optional here: both are searchable when present. */
+  inventoryNumber?: string;
+  poNumber?: string;
 }
 
 /** Filter a catalog (project items or library items) by search + dropdowns.
@@ -96,7 +121,9 @@ export function filterCatalog<T extends Filterable & { room?: string }>(
     if (f.category && !tagsInclude(it.category, f.category)) return false;
     if (q) {
       const hay =
-        `${it.name} ${it.vendor} ${it.collection} ${it.sku} ${it.material} ${it.color}`.toLowerCase();
+        `${it.name} ${it.vendor} ${it.collection} ${it.sku} ${it.material} ${it.color} ${
+          it.inventoryNumber ?? ""
+        } ${it.poNumber ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
