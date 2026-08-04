@@ -1,3 +1,5 @@
+import { INVENTORY_ENABLED } from "../features";
+
 interface Props {
   firmName: string;
   /** Project count — always loaded with the workspace. */
@@ -59,20 +61,22 @@ export default function HomePage({
             <span className="home-tile-go">Open →</span>
           </span>
         </button>
-        <button className="home-tile" onClick={onOpenInventory}>
-          <span className="home-tile-kicker">Stock</span>
-          <span className="home-tile-title">Inventory</span>
-          <span className="home-tile-desc">
-            What you have on hand right now, with quantities.
-          </span>
-          <span className="home-tile-foot">
-            <span className="home-tile-count">
-              {inventoryCount !== null &&
-                `${inventoryCount} item${inventoryCount === 1 ? "" : "s"}`}
+        {INVENTORY_ENABLED && (
+          <button className="home-tile" onClick={onOpenInventory}>
+            <span className="home-tile-kicker">Stock</span>
+            <span className="home-tile-title">Inventory</span>
+            <span className="home-tile-desc">
+              What you have on hand right now, with quantities.
             </span>
-            <span className="home-tile-go">Open →</span>
-          </span>
-        </button>
+            <span className="home-tile-foot">
+              <span className="home-tile-count">
+                {inventoryCount !== null &&
+                  `${inventoryCount} item${inventoryCount === 1 ? "" : "s"}`}
+              </span>
+              <span className="home-tile-go">Open →</span>
+            </span>
+          </button>
+        )}
       </div>
     </section>
   );

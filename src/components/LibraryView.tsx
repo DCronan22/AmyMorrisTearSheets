@@ -4,6 +4,7 @@ import ItemCard from "./ItemCard";
 import type { CardItem } from "./ItemCard";
 import CatalogFilterBar from "./CatalogFilterBar";
 import { hasActiveFilter, useCatalogFilter } from "./useCatalogFilter";
+import { INVENTORY_ENABLED } from "../features";
 
 interface Props {
   library: LibraryItem[];
@@ -125,13 +126,15 @@ export default function LibraryView({
           >
             Add to {activeClientName ?? "client"}
           </button>
-          <button
-            className="btn ghost small"
-            onClick={onAddSelectedToInventory}
-            title="Copy the selected pieces into your inventory (pieces already stocked have their quantity increased)"
-          >
-            Add to inventory
-          </button>
+          {INVENTORY_ENABLED && (
+            <button
+              className="btn ghost small"
+              onClick={onAddSelectedToInventory}
+              title="Copy the selected pieces into your inventory (pieces already stocked have their quantity increased)"
+            >
+              Add to inventory
+            </button>
+          )}
           <button
             className="btn ghost small"
             onClick={() => onPrint(library.filter((li) => selected.has(li.id)))}

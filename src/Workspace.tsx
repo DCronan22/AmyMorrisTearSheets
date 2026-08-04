@@ -6,11 +6,13 @@ import {
   emptyItem,
   emptyProject,
   defaultFirmStyle,
+  inventoryToDraft,
   inventoryToItem,
   itemToLibrary,
   libraryToItem,
   newId,
 } from "./types";
+import { INVENTORY_ENABLED } from "./features";
 import { useAuth } from "./auth/AuthProvider";
 import { useConfirm } from "./components/ConfirmProvider";
 import StyleEditor from "./branding/StyleEditor";
@@ -662,6 +664,7 @@ export default function Workspace({
   }
 
   function openInventory() {
+    if (!INVENTORY_ENABLED) return;
     setViewMode("inventory");
     void ensureInventory();
   }
@@ -672,24 +675,30 @@ export default function Workspace({
   );
 
   // Save an inventory draft (the ItemEditor works on an Item; convert back).
-  // The on-hand quantity is edited via the card stepper, not the editor, so
-  // updates keep the entry's existing quantity; new entries start at 1.
+  // The editor carries the on-hand quantity too — it's the same number the card
+  // stepper edits — so the draft's count is what gets written. Zero is allowed
+  // ("stocked, none on hand"); removing an entry is always an explicit delete.
   async function saveInventoryDraft(draft: Item) {
     setInventoryError(null);
     const existing = inventory.find((i) => i.id === draft.id);
+    const quantity = Math.max(0, Math.floor(draft.quantity || 0));
     try {
       if (existing) {
         const saved = await saveInventoryItem(
           {
             id: draft.id,
             ...itemToLibrary(draft),
-            quantity: existing.quantity,
+            quantity,
           },
           firm.id
         );
         setInventory((is) => is.map((i) => (i.id === saved.id ? saved : i)));
       } else {
-        const saved = await createInventoryItem(firm.id, itemToLibrary(draft));
+        const saved = await createInventoryItem(
+          firm.id,
+          itemToLibrary(draft),
+          quantity
+        );
         setInventory((is) => [saved, ...is]);
       }
       setEditingInventory(null);
@@ -786,7 +795,7 @@ export default function Workspace({
    * being duplicated; anything new is added with quantity 1.
    */
   async function addLibraryItemsToInventory(libItems: LibraryItem[]) {
-    if (!libItems.length) return;
+    if (!INVENTORY_ENABLED || !libItems.length) return;
     setPickingForInventory(false);
     setSaveError(null);
     try {
@@ -837,6 +846,7 @@ export default function Workspace({
 
   // From the Inventory tab: open the database picker.
   function openInventoryPicker() {
+    if (!INVENTORY_ENABLED) return;
     setPickingForInventory(true);
     void ensureLibrary();
   }
@@ -1110,13 +1120,15 @@ export default function Workspace({
               >
                 Database
               </button>
-              <button
-                className={viewMode === "inventory" ? "active" : ""}
-                aria-current={viewMode === "inventory" ? "page" : undefined}
-                onClick={openInventory}
-              >
-                Inventory
-              </button>
+              {INVENTORY_ENABLED && (
+                <button
+                  className={viewMode === "inventory" ? "active" : ""}
+                  aria-current={viewMode === "inventory" ? "page" : undefined}
+                  onClick={openInventory}
+                >
+                  Inventory
+                </button>
+              )}
               </nav>
               <span className="divider" />
               {/* Secondary / rare actions */}
@@ -1350,7 +1362,7 @@ export default function Workspace({
             activeClientName={project.name}
             showVendor={showVendor}
           />
-        ) : viewMode === "inventory" ? (
+        ) : viewMode === "inventory" && INVENTORY_ENABLED ? (
           <InventoryView
             inventory={inventory}
             loading={inventoryLoading}
@@ -1359,7 +1371,7 @@ export default function Workspace({
             onToggleSelect={toggleInventorySelect}
             onAdd={() => setEditingInventory(emptyItem())}
             onEdit={(inv) =>
-              setEditingInventory({ ...inventoryToItem(inv), id: inv.id })
+              setEditingInventory(inventoryToDraft(inv))
             }
             onDelete={removeInventoryItem}
             onSetQuantity={(inv, qty) => void setInventoryQuantity(inv, qty)}
@@ -1533,6 +1545,7 @@ export default function Workspace({
         <ItemEditor
           item={editingInventory}
           libraryMode
+          inventoryMode
           heading={
             inventory.some((i) => i.id === editingInventory.id)
               ? "Edit inventory item"
