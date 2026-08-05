@@ -20,6 +20,13 @@ export interface StockFields {
   inventoryNumber?: string;
   /** The purchase order this piece arrived on. */
   poNumber?: string;
+  /**
+   * Who the piece was bought for — the client, job, or sidemark it's earmarked
+   * against. Blank for stock bought on spec. Matches the "Purchased For /
+   * Client / Sidemark" line on the firm's Word inventory form, so the field
+   * survives a round trip through .docx import/export.
+   */
+  sidemark?: string;
 }
 
 /** A single specified product / furnishing on a tear sheet. */
@@ -525,6 +532,9 @@ export function sanitizeStockFields(raw: unknown): StockFields {
   }
   if (typeof r.poNumber === "string" && r.poNumber.trim()) {
     out.poNumber = r.poNumber.trim();
+  }
+  if (typeof r.sidemark === "string" && r.sidemark.trim()) {
+    out.sidemark = r.sidemark.trim();
   }
   return out;
 }

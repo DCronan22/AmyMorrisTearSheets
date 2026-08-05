@@ -32,6 +32,7 @@ const HEADER_ALIASES: Record<keyof Item, string[]> = {
   retailPrice: [],
   inventoryNumber: [],
   poNumber: [],
+  sidemark: [],
 };
 
 // Defensive caps so a pathological upload (a 500k-row export, a cell holding a
