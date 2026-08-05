@@ -36,6 +36,7 @@ import {
 import {
   fetchInventory,
   createInventoryItem,
+  createInventoryItems,
   saveInventoryItem,
   updateInventoryQuantity,
   deleteInventoryItem,
@@ -111,8 +112,11 @@ export default function Workspace({
   const [librarySelected, setLibrarySelected] = useState<Set<string>>(new Set());
   const [editingLibrary, setEditingLibrary] = useState<Item | null>(null);
   const [picking, setPicking] = useState(false);
-  // Which destination an open ImportPanel feeds: the client or the library.
-  const [importTarget, setImportTarget] = useState<"client" | "library">("client");
+  // Which destination an open ImportPanel feeds: the client, the database, or
+  // the inventory.
+  const [importTarget, setImportTarget] = useState<
+    "client" | "library" | "inventory"
+  >("client");
 
   // --- Inventory (physical stock) ---
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -129,6 +133,8 @@ export default function Workspace({
   const [flash, setFlash] = useState<string | null>(null);
   // Guards against double-clicking the PowerPoint export while images fetch.
   const [exportingPptx, setExportingPptx] = useState(false);
+  // The same guard for the Word inventory-form export.
+  const [exportingDocx, setExportingDocx] = useState(false);
 
   const { applyFirm } = useAuth();
   const confirm = useConfirm();
@@ -561,6 +567,7 @@ export default function Workspace({
   // promise so the panel can show a busy state and surface failures inline.
   async function routeImport(items: Item[], mode: "append" | "replace") {
     if (importTarget === "library") await importToLibrary(items);
+    else if (importTarget === "inventory") await importToInventory(items);
     else handleImport(items, mode);
   }
 
@@ -842,6 +849,63 @@ export default function Workspace({
     if (!chosen.length) return;
     void addLibraryItemsToInventory(chosen);
     setLibrarySelected(new Set());
+  }
+
+  /**
+   * Word / spreadsheet / PowerPoint / PDF import targeted at the inventory
+   * (always additive). Each imported entry keeps the quantity its form was
+   * filled in with — including 0, which is a real on-hand count. Errors
+   * propagate so the open ImportPanel can show them and stay open.
+   */
+  async function importToInventory(items: Item[]) {
+    if (!INVENTORY_ENABLED) return;
+    setInventoryError(null);
+    const saved = await createInventoryItems(
+      firm.id,
+      items.map((it) => ({
+        spec: itemToLibrary(it),
+        quantity: Math.max(0, Math.floor(it.quantity || 0)),
+      }))
+    );
+    setInventory((is) => [...saved, ...is]);
+    // A first-ever import IS the loaded inventory, so don't re-fetch over it.
+    setInventoryLoaded(true);
+    flashMsg(`Added ${saved.length} to your inventory.`);
+  }
+
+  /**
+   * Download the firm's inventory as Word "INVENTORY DETAIL FORM" pages — the
+   * same paperwork the firm already files, one form per entry on their
+   * letterhead. Lazily imported so its embedded Word XML stays out of the
+   * initial bundle.
+   */
+  async function exportInventoryDocx(items: InventoryItem[]) {
+    if (items.length === 0 || exportingDocx) return;
+    setExportingDocx(true);
+    setSaveError(null);
+    flashMsg("Preparing Word forms…");
+    try {
+      const { exportInventoryToDocx } = await import("./docxExport");
+      const { missingImages } = await exportInventoryToDocx(
+        items,
+        `${firm.name} Inventory`,
+        { style, firmName: firm.name }
+      );
+      flashMsg(
+        missingImages > 0
+          ? `Word forms exported — ${missingImages} photo${
+              missingImages === 1 ? "" : "s"
+            } couldn't be embedded (vendor site blocked the download).`
+          : "Word forms exported."
+      );
+    } catch (e) {
+      setFlash(null);
+      setSaveError(
+        e instanceof Error ? e.message : "Could not export the Word forms."
+      );
+    } finally {
+      setExportingDocx(false);
+    }
   }
 
   // From the Inventory tab: open the database picker.
@@ -1376,6 +1440,12 @@ export default function Workspace({
             onDelete={removeInventoryItem}
             onSetQuantity={(inv, qty) => void setInventoryQuantity(inv, qty)}
             onAddFromDatabase={openInventoryPicker}
+            onImport={() => {
+              setImportTarget("inventory");
+              setImporting(true);
+            }}
+            onExportDocx={(items) => void exportInventoryDocx(items)}
+            exporting={exportingDocx}
             onPrint={(items) => print(items.map(inventoryToItem))}
             onDeleteSelected={removeInventorySelected}
             onClearSelection={() => setInventorySelected(new Set())}

@@ -7,15 +7,15 @@ interface Props {
   onImport: (items: Item[], mode: "append" | "replace") => void | Promise<void>;
   onClose: () => void;
   /** Where the import lands — drives the wording and the action buttons. */
-  target?: "client" | "library";
+  target?: "client" | "library" | "inventory";
   /** Name of the active client project (shown when target is "client"). */
   destinationName?: string;
 }
 
 // Files we can actually parse. Anything else is rejected up front with a clear
 // message instead of being handed to a parser that would throw something cryptic.
-const SUPPORTED = /\.(xlsx|xls|csv|pptx|pdf)$/i;
-const ACCEPT = ".xlsx,.xls,.csv,.pptx,.pdf";
+const SUPPORTED = /\.(xlsx|xls|csv|pptx|pdf|docx)$/i;
+const ACCEPT = ".xlsx,.xls,.csv,.pptx,.pdf,.docx";
 // Per-file guard. xlsx/pptx are zipped, so even large photo-heavy decks stay
 // well under this; it's really just here to stop someone dropping a giant file
 // (e.g. a 500 MB video) and freezing the tab while the browser tries to parse it.
@@ -48,8 +48,14 @@ export default function ImportPanel({
   const dragDepth = useRef(0);
 
   const toLibrary = target === "library";
+  const toInventory = target === "inventory";
+  // The database and the inventory only ever gain entries; a client project is
+  // the one destination that can also be replaced wholesale.
+  const additive = toLibrary || toInventory;
   const destination = toLibrary
     ? "your database"
+    : toInventory
+    ? "your inventory"
     : destinationName
     ? `“${destinationName}”`
     : "this project";
@@ -98,7 +104,7 @@ export default function ImportPanel({
       setBusy(false);
       if (supported.length === 0) {
         setError(
-          "No Excel, CSV, PowerPoint, or PDF files were found. Folders are searched all the way down, so double-check the files are really in there."
+          "No Excel, CSV, PowerPoint, Word, or PDF files were found. Folders are searched all the way down, so double-check the files are really in there."
         );
       } else if (tooBig.length > 0) {
         setError(
@@ -131,6 +137,7 @@ export default function ImportPanel({
       const file = usable[i];
       const isPptx = /\.pptx$/i.test(file.name);
       const isPdf = /\.pdf$/i.test(file.name);
+      const isDocx = /\.docx$/i.test(file.name);
       setStatus(
         many
           ? `Reading file ${i + 1} of ${usable.length}: “${file.name}”…`
@@ -138,6 +145,8 @@ export default function ImportPanel({
           ? `Reading slides from “${file.name}”…`
           : isPdf
           ? `Reading pages from “${file.name}”…`
+          : isDocx
+          ? `Reading the form in “${file.name}”…`
           : `Reading “${file.name}”…`
       );
       try {
@@ -147,6 +156,8 @@ export default function ImportPanel({
           ? // Lazy-load the PDF parser (and its sizeable pdf.js worker) only when
             // a PDF is actually imported, keeping it out of the initial bundle.
             await (await import("../pdf")).parsePdf(file)
+          : isDocx
+          ? await (await import("../docx")).parseDocx(file)
           : await parseSpreadsheet(file);
         for (const it of result.items) allItems.push(it);
         for (const c of result.matchedColumns) matchedSet.add(c);
@@ -162,8 +173,8 @@ export default function ImportPanel({
       setStatus(null);
       setError(
         many
-          ? `We read ${usable.length} files but couldn’t pull any items out. For PowerPoint or PDF, each slide/page should have the product name, dimensions, price, and lead time.`
-          : "No tear sheets found in that file. Each slide or page should have the product name, dimensions, price, and lead time — or, for a spreadsheet, headers like Item, Vendor, and Price."
+          ? `We read ${usable.length} files but couldn’t pull any items out. For PowerPoint or PDF, each slide/page should have the product name, dimensions, price, and lead time; a Word form should have its “Item Description:” line filled in.`
+          : "No tear sheets found in that file. Each slide or page should have the product name, dimensions, price, and lead time; a Word inventory form should have its “Item Description:” line filled in — or, for a spreadsheet, headers like Item, Vendor, and Price."
       );
       return;
     }
@@ -400,6 +411,8 @@ export default function ImportPanel({
             <p className="muted small">
               {toLibrary
                 ? "Imported pieces are added to your master database (existing entries are kept)."
+                : toInventory
+                ? "Imported entries are added to your inventory (existing entries are kept)."
                 : `Imported items are added to ${destination}.`}
               <br />
               <strong>Spreadsheets:</strong> columns are matched automatically
@@ -412,8 +425,14 @@ export default function ImportPanel({
               <br />
               <strong>PowerPoint (.pptx) &amp; PDF (.pdf):</strong> every slide
               or page becomes an item — the product name, dimensions, price, lead
-              time, room, and photo are pulled from each one automatically. Drop
-              or choose a folder to import many files at once.
+              time, room, and photo are pulled from each one automatically.
+              <br />
+              <strong>Word (.docx):</strong> an inventory detail form becomes one
+              entry — the description, date, quantity, vendor, net and retail
+              price, sidemark, notes, inventory and PO numbers, and the photo are
+              all read off the form.
+              <br />
+              Drop or choose a folder to import many files at once.
             </p>
           </>
         )}
@@ -457,13 +476,17 @@ export default function ImportPanel({
               >
                 Choose a different file
               </button>
-              {toLibrary ? (
+              {additive ? (
                 <button
                   className="btn primary"
                   onClick={() => confirm("append")}
                   disabled={submitting || pending.length === 0}
                 >
-                  {submitting ? "Adding…" : `Add ${pending.length} to database`}
+                  {submitting
+                    ? "Adding…"
+                    : `Add ${pending.length} to ${
+                        toInventory ? "inventory" : "database"
+                      }`}
                 </button>
               ) : (
                 <>

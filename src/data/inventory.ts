@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase";
-import { offloadDataUrl, isDataUrlImage } from "../lib/imageStore";
+import { offloadDataUrl, offloadItemImages, isDataUrlImage } from "../lib/imageStore";
 import type { InventoryItem, LibraryItem } from "../types";
 import { itemToLibrary, sanitizeItem, syncStockPricing } from "../types";
 
@@ -102,6 +102,34 @@ export async function createInventoryItem(
     .single();
   if (error) throw mapInventoryError(error);
   return rowToInventory(data as InventoryRow);
+}
+
+/**
+ * Insert many inventory entries at once (used by the Word / spreadsheet
+ * import). Each entry carries its own on-hand quantity, so a folder of forms
+ * keeps the counts they were filled in with. One round trip rather than one
+ * per file — a folder import can hold hundreds.
+ */
+export async function createInventoryItems(
+  firmId: string,
+  entries: { spec: Omit<LibraryItem, "id">; quantity: number }[]
+): Promise<InventoryItem[]> {
+  if (entries.length === 0) return [];
+  const { items: uploaded } = await offloadItemImages(
+    entries.map((e) => e.spec),
+    firmId
+  );
+  const rows = uploaded.map((spec, i) => ({
+    data: inventoryToData(spec),
+    quantity: coerceQuantity(entries[i].quantity),
+    firm_id: firmId,
+  }));
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .insert(rows)
+    .select("*");
+  if (error) throw mapInventoryError(error);
+  return (data as InventoryRow[]).map(rowToInventory);
 }
 
 /** Update an entry's product details and quantity. Ownership enforced by RLS. */

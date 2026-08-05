@@ -50,6 +50,12 @@ interface Props {
   onSetQuantity: (inv: InventoryItem, quantity: number) => void;
   /** Open the "add from database" picker. */
   onAddFromDatabase: () => void;
+  /** Open the importer, targeted at the inventory. */
+  onImport: () => void;
+  /** Download the given entries as Word inventory detail forms. */
+  onExportDocx: (items: InventoryItem[]) => void;
+  /** True while a Word export is building, to stop a double-click. */
+  exporting?: boolean;
   /** Print the given inventory entries as tear sheets. */
   onPrint: (items: InventoryItem[]) => void;
   /** Delete the selected entries (with confirmation). */
@@ -76,6 +82,9 @@ export default function InventoryView({
   onDelete,
   onSetQuantity,
   onAddFromDatabase,
+  onImport,
+  onExportDocx,
+  exporting = false,
   onPrint,
   onDeleteSelected,
   onClearSelection,
@@ -110,6 +119,13 @@ export default function InventoryView({
           >
             From database
           </button>
+          <button
+            className="btn"
+            onClick={onImport}
+            title="Import inventory forms from Word, or a spreadsheet, PowerPoint or PDF"
+          >
+            Import
+          </button>
           <span className="divider" />
           <button
             className="btn"
@@ -123,6 +139,30 @@ export default function InventoryView({
           >
             Print{hasFilter ? ` (${filtered.length})` : ""}
           </button>
+          <div className="menu">
+            <button className="btn" disabled={inventory.length === 0}>
+              Export ▾
+            </button>
+            <div className="menu-list">
+              <button
+                disabled={filtered.length === 0 || exporting}
+                onClick={() => onExportDocx(filtered)}
+                title="One Word inventory detail form per entry, on your letterhead"
+              >
+                Word forms (.docx)
+                {hasFilter ? ` — ${filtered.length} shown` : ""}
+              </button>
+              <button
+                disabled={selectedCount === 0 || exporting}
+                onClick={() =>
+                  onExportDocx(inventory.filter((inv) => selected.has(inv.id)))
+                }
+              >
+                Word — selected items
+                {selectedCount > 0 ? ` (${selectedCount})` : ""}
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
