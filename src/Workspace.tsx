@@ -867,9 +867,14 @@ export default function Workspace({
         quantity: Math.max(0, Math.floor(it.quantity || 0)),
       }))
     );
-    setInventory((is) => [...saved, ...is]);
-    // A first-ever import IS the loaded inventory, so don't re-fetch over it.
-    setInventoryLoaded(true);
+    if (inventoryLoaded) {
+      setInventory((is) => [...saved, ...is]);
+    } else {
+      // The list on screen isn't the whole inventory yet (the initial load
+      // failed, say), so adopting just these rows would hide the rest. Fetch
+      // the real list, which now includes them.
+      await loadInventory();
+    }
     flashMsg(`Added ${saved.length} to your inventory.`);
   }
 
