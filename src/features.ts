@@ -17,4 +17,4 @@
  * TypeScript from narrowing the guarded branches away as dead code, so the
  * feature keeps type-checking while it's off.
  */
-export const INVENTORY_ENABLED: boolean = false;
+export const INVENTORY_ENABLED: boolean = true;
