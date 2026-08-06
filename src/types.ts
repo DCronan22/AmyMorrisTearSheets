@@ -653,6 +653,39 @@ export function inventoryToItem(inv: InventoryItem): Item {
 }
 
 /**
+ * Drop an inventory entry into a client project as a fresh, independent item.
+ *
+ * Deliberately NOT inventoryToItem: that keeps the stock fields (they ride
+ * along so the shared editor can round-trip an entry), and those must not
+ * follow a piece onto a client's project. The firm's **net price** in
+ * particular is internal — it would otherwise sit in the project's stored data
+ * and reappear if that item were later saved to the database and exported as
+ * an inventory form. Only the retail price crosses, as the item's `price`.
+ *
+ * Quantity starts at 1: the on-hand count is stock the firm holds, not how many
+ * the client is specifying.
+ */
+export function inventoryToClientItem(inv: InventoryItem): Item {
+  return {
+    ...emptyItem(),
+    name: inv.name,
+    vendor: inv.vendor,
+    collection: inv.collection,
+    category: inv.category,
+    sku: inv.sku,
+    price: inv.retailPrice ?? inv.price ?? null,
+    dimensions: inv.dimensions,
+    material: inv.material,
+    color: inv.color,
+    leadTime: inv.leadTime,
+    notes: inv.notes,
+    imageUrl: inv.imageUrl,
+    productUrl: inv.productUrl,
+    upholstered: inv.upholstered ?? true,
+  };
+}
+
+/**
  * Open an inventory entry in the shared item editor. Unlike inventoryToItem
  * this keeps the entry's own id and its real on-hand count — including zero, which
  * the printable conversion floors at 1 — because the editor writes both back.

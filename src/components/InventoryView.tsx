@@ -64,6 +64,10 @@ interface Props {
   onDeleteSelected: () => void;
   /** Deselect everything (the selection strip's "Clear selection"). */
   onClearSelection: () => void;
+  /** Copy the selected entries into the open client project. */
+  onAddSelectedToClient: () => void;
+  /** Name of the active client project, for the "add to" button label. */
+  activeClientName: string | null;
   /** Show the vendor on each card (visual only). */
   showVendor?: boolean;
 }
@@ -91,6 +95,8 @@ export default function InventoryView({
   onPrint,
   onDeleteSelected,
   onClearSelection,
+  onAddSelectedToClient,
+  activeClientName,
   showVendor = true,
 }: Props) {
   const { filter, setFilter, filtered } = useCatalogFilter(inventory);
@@ -202,6 +208,18 @@ export default function InventoryView({
       {selectedCount > 0 && (
         <section className="selectbar has-selection">
           <span className="selectbar-count">{selectedCount} selected</span>
+          <button
+            className="btn small primary"
+            onClick={onAddSelectedToClient}
+            disabled={!activeClientName}
+            title={
+              activeClientName
+                ? `Copy the selected pieces into ${activeClientName} (stock is not changed)`
+                : "Open a client first"
+            }
+          >
+            Add to {activeClientName ?? "client"}
+          </button>
           <button
             className="btn ghost small"
             onClick={() =>

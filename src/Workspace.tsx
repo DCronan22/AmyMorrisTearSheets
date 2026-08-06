@@ -6,6 +6,7 @@ import {
   emptyItem,
   emptyProject,
   defaultFirmStyle,
+  inventoryToClientItem,
   inventoryToDraft,
   itemToLibrary,
   libraryToItem,
@@ -653,6 +654,24 @@ export default function Workspace({
   }
 
   // From the Library tab: copy the current selection into the open client.
+  /**
+   * Copy the selected inventory entries into the open client project and jump
+   * there. The inventory is left exactly as it was — the on-hand count is not
+   * stepped down, because specifying a piece for a client isn't the same event
+   * as it leaving the warehouse.
+   */
+  function addInventorySelectionToClient() {
+    const chosen = inventory.filter((inv) => inventorySelected.has(inv.id));
+    if (!chosen.length || !project) return;
+    const added = chosen.map(inventoryToClientItem);
+    applyProjectChange((p) => ({ ...p, items: [...p.items, ...added] }));
+    setInventorySelected(new Set());
+    setViewMode("clients");
+    flashMsg(
+      `Added ${added.length} item${added.length === 1 ? "" : "s"} to ${project.name}.`
+    );
+  }
+
   function addLibrarySelectionToClient() {
     const chosen = library.filter((l) => librarySelected.has(l.id));
     if (!chosen.length || !project) return;
@@ -1508,6 +1527,8 @@ export default function Workspace({
             onPrint={printInventoryForms}
             onDeleteSelected={removeInventorySelected}
             onClearSelection={() => setInventorySelected(new Set())}
+            onAddSelectedToClient={addInventorySelectionToClient}
+            activeClientName={project.name}
             showVendor={showVendor}
           />
         ) : (
