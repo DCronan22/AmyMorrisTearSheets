@@ -180,12 +180,20 @@ const LABEL_RE = new RegExp(
 const TITLE_RE = /^inventory\s+detail\s+form$/i;
 
 /**
- * Turn one form's flattened lines into structured fields. Labels may sit
- * anywhere on a line and a line may carry two of them, so we locate every
- * label first and take each value as the text running up to the next label (or
- * the end of the line) — that way an empty value stays empty instead of
- * swallowing the next label's text. The first non-blank value wins if a label
- * somehow repeats. Exported for testing.
+ * Turn one form's flattened lines into structured fields. A line may carry two
+ * labels ("Date: … Quantity: …", "Net Price: … Retail Price: …"), so we locate
+ * every label first and take each value as the text running up to the next
+ * label (or the end of the line) — that way an empty value stays empty instead
+ * of swallowing the next label's text. The first non-blank value wins if a
+ * label somehow repeats. Exported for testing.
+ *
+ * A label only counts at the start of a line or straight after a TAB, which is
+ * how the form separates its columns. Without that rule, ordinary prose in a
+ * value — "Reorder from Vendor: Century", "Damaged in transit. Date: unknown" —
+ * reads as a label: the note is truncated at the colon AND the field it names
+ * is overwritten with the rest of the sentence. Requiring the tab fails safe
+ * instead: a variant form that separated its second column with spaces would
+ * leave that one value unread rather than corrupting a different field.
  */
 export function parseFormLines(lines: string[]): ParsedForm {
   const raw = new Map<FormField, string>();
@@ -196,7 +204,10 @@ export function parseFormLines(lines: string[]): ParsedForm {
     let m: RegExpExecArray | null;
     while ((m = LABEL_RE.exec(line)) !== null) {
       const field = fieldForLabel(m[2]);
-      if (field) {
+      // m[1] is the character before the label: "" only at the very start of
+      // the line (the pattern's `^` branch), "\t" at a column break.
+      const atColumn = m[1] === "" || m[1] === "\t";
+      if (field && atColumn) {
         marks.push({
           field,
           labelAt: m.index + m[1].length,
@@ -439,7 +450,7 @@ function flattenBody(xml: string): { lines: Line[]; embeds: Embed[] } {
   let buf = "";
 
   const flush = (at: number) => {
-    const text = collapse(buf);
+    const text = collapseLine(buf);
     if (text) lines.push({ text, at });
     buf = "";
   };
@@ -475,9 +486,20 @@ function flattenBody(xml: string): { lines: Line[]; embeds: Embed[] } {
   return { lines, embeds };
 }
 
-/** Collapse runs of whitespace (including tabs) to single spaces and trim. */
+/** Collapse runs of whitespace (including tabs) to single spaces and trim.
+ *  Used on VALUES, where a tab is just spacing. */
 function collapse(s: string): string {
   return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Collapse a whole line while keeping its column breaks: a run of whitespace
+ * containing a tab becomes a single tab, any other run a single space.
+ * parseFormLines uses those surviving tabs to tell a genuine second column
+ * ("… \t Quantity: 1") from a colon inside ordinary prose.
+ */
+function collapseLine(s: string): string {
+  return s.replace(/\s+/g, (w) => (w.includes("\t") ? "\t" : " ")).trim();
 }
 
 function baseName(path: string): string {
