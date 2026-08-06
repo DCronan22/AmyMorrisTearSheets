@@ -1206,8 +1206,11 @@ a.btn {
    Print / PDF layout
    ============================================================ */
 
-/* Hide the print layout on screen; show only when printing. */
-.ts-print-root {
+/* Hide the print layouts on screen; show only when printing. Both stay
+   mounted so their images are loaded before the print dialog opens, and
+   data-active picks the one that actually prints. */
+.ts-print-root,
+.ivf-root {
   display: none;
 }
 
@@ -1229,7 +1232,7 @@ a.btn {
      Tear sheet page — one product per page. Colors/fonts come
      from the firm's style via vars set inline on .ts-print-root.
      ============================================================ */
-  .ts-print-root {
+  .ts-print-root[data-active="1"] {
     display: block;
     color: var(--ts-text, #907c67);
     font-family: var(--ts-body, var(--sans));
@@ -1328,6 +1331,109 @@ a.btn {
     font-size: 10pt;
     letter-spacing: 0.05em;
     color: var(--ts-accent, #907c67);
+  }
+
+  /* ============================================================
+     Inventory detail form — one stock entry per US Letter page.
+     The same form the Word export produces; every measurement
+     comes from src/inventoryForm.ts via vars set on .ivf-root.
+     ============================================================ */
+
+  /* Its own named page — full-bleed, because every block is positioned in
+     absolute page coordinates from FORM_LAYOUT (the same coordinates the
+     PowerPoint export uses). The tear sheets above keep their own page size. */
+  @page ivf {
+    size: letter;
+    margin: 0;
+  }
+
+  .ivf-root[data-active="1"] {
+    display: block;
+    font-family: Georgia, "Times New Roman", serif;
+    color: #000;
+  }
+  .ivf-page {
+    page: ivf;
+    position: relative;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+  }
+  .ivf-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Every block is placed by inline left/top/width from FORM_LAYOUT. */
+  .ivf-head,
+  .ivf-title,
+  .ivf-fields,
+  .ivf-box,
+  .ivf-photo,
+  .ivf-foot {
+    position: absolute;
+    margin: 0;
+  }
+
+  /* Letterhead */
+  .ivf-head {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .ivf-logo {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+  }
+  .ivf-wordmark {
+    font-weight: 400;
+    align-self: center;
+  }
+
+  .ivf-title {
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .ivf-row {
+    margin: 0;
+    position: relative;
+    /* The form's fields are single-line; a long value is clipped, not wrapped,
+       so a row can never push the photo box off its measured position. */
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ivf-label {
+    font-weight: 700;
+  }
+  .ivf-value {
+    font-weight: 400;
+  }
+  /* The second field on a shared line sits at the tab stop the reference's
+     tab runs reach. */
+  .ivf-second {
+    position: absolute;
+    top: 0;
+  }
+
+  /* The hairline-bordered photo box, centered on the margin. */
+  .ivf-box {
+    border-style: solid;
+    border-color: #000;
+    background: #fff;
+    box-sizing: border-box;
+  }
+  .ivf-photo {
+    height: auto;
+    object-fit: contain;
+  }
+
+  .ivf-foot {
+    text-align: center;
   }
 
   /* Make sure backgrounds/colors print */

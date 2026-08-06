@@ -7,7 +7,6 @@ import {
   emptyProject,
   defaultFirmStyle,
   inventoryToDraft,
-  inventoryToItem,
   itemToLibrary,
   libraryToItem,
   newId,
@@ -52,6 +51,7 @@ import InventoryView from "./components/InventoryView";
 import LibraryPicker from "./components/LibraryPicker";
 import Slideshow from "./components/Slideshow";
 import TearSheetPrint from "./components/TearSheetPrint";
+import InventoryFormPrint from "./components/InventoryFormPrint";
 import ItemEditor from "./components/ItemEditor";
 import ImportPanel from "./components/ImportPanel";
 
@@ -152,6 +152,9 @@ export default function Workspace({
   }
   // The set of items to render in the print layout (selected subset or all).
   const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
+  // Inventory prints as the firm's inventory detail form, not as tear sheets,
+  // so it has its own print set; whichever is non-null wins the print dialog.
+  const [printForms, setPrintForms] = useState<InventoryItem[] | null>(null);
   const restoreInput = useRef<HTMLInputElement>(null);
 
   // The firm's style (or the default look) drives the print/PDF and PowerPoint
@@ -261,6 +264,7 @@ export default function Workspace({
     // print dialog; bail. `undefined` still means "print the whole project".
     if (items && items.length === 0) return;
     setPrintItems(items);
+    setPrintForms(null);
     const reset = () => {
       setPrintItems(undefined);
       window.onafterprint = null;
@@ -270,6 +274,25 @@ export default function Workspace({
     setTimeout(() => {
       window.print();
       // Fallback in case onafterprint never fires (some browsers/dialogs).
+      setTimeout(reset, 1000);
+    }, 0);
+  }
+
+  /**
+   * Print inventory as the firm's inventory detail form — the same page the
+   * Word and PowerPoint inventory exports produce — rather than as tear sheets.
+   */
+  function printInventoryForms(items: InventoryItem[]) {
+    if (items.length === 0) return;
+    setPrintForms(items);
+    setPrintItems(undefined);
+    const reset = () => {
+      setPrintForms(null);
+      window.onafterprint = null;
+    };
+    window.onafterprint = reset;
+    setTimeout(() => {
+      window.print();
       setTimeout(reset, 1000);
     }, 0);
   }
@@ -884,6 +907,36 @@ export default function Workspace({
    * letterhead. Lazily imported so its embedded Word XML stays out of the
    * initial bundle.
    */
+  /** Inventory as PowerPoint — the same detail form the Word export makes. */
+  async function exportInventoryPptx(items: InventoryItem[]) {
+    if (items.length === 0 || exportingPptx) return;
+    setExportingPptx(true);
+    setSaveError(null);
+    flashMsg("Preparing PowerPoint forms…");
+    try {
+      const { exportInventoryFormsToPptx } = await import("./inventoryFormPptx");
+      const { missingImages } = await exportInventoryFormsToPptx(
+        items,
+        `${firm.name} Inventory`,
+        { style, firmName: firm.name }
+      );
+      flashMsg(
+        missingImages > 0
+          ? `PowerPoint exported — ${missingImages} photo${
+              missingImages === 1 ? "" : "s"
+            } couldn't be embedded (vendor site blocked the download).`
+          : "PowerPoint exported."
+      );
+    } catch (e) {
+      setFlash(null);
+      setSaveError(
+        e instanceof Error ? e.message : "Could not export the PowerPoint forms."
+      );
+    } finally {
+      setExportingPptx(false);
+    }
+  }
+
   async function exportInventoryDocx(items: InventoryItem[]) {
     if (items.length === 0 || exportingDocx) return;
     setExportingDocx(true);
@@ -1450,8 +1503,9 @@ export default function Workspace({
               setImporting(true);
             }}
             onExportDocx={(items) => void exportInventoryDocx(items)}
-            exporting={exportingDocx}
-            onPrint={(items) => print(items.map(inventoryToItem))}
+            onExportPptx={(items) => void exportInventoryPptx(items)}
+            exporting={exportingDocx || exportingPptx}
+            onPrint={printInventoryForms}
             onDeleteSelected={removeInventorySelected}
             onClearSelection={() => setInventorySelected(new Set())}
             showVendor={showVendor}
@@ -1575,12 +1629,21 @@ export default function Workspace({
         </footer>
       </div>
 
-      {/* Print layout lives outside .no-print and is shown only when printing */}
+      {/* Print layouts live outside .no-print and are shown only when
+          printing. Both stay mounted so their photos are already loaded when
+          the dialog opens; data-active picks the one that prints. */}
       <TearSheetPrint
         project={project}
         items={printItems}
         style={style}
         firmName={firm.name}
+        active={printForms === null}
+      />
+      <InventoryFormPrint
+        items={printForms ?? inventory}
+        style={style}
+        firmName={firm.name}
+        active={printForms !== null}
       />
 
       {editing && (

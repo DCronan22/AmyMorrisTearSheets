@@ -2,6 +2,9 @@ import { strToU8, zipSync } from "fflate";
 import type { FirmStyle, InventoryItem } from "./types";
 import { safeLogoUrl } from "./util";
 import { triggerDownload } from "./storage";
+// The form's wording and value formatting are shared with the print/PDF and
+// PowerPoint renderings of the same form, so all three stay identical.
+import { FORM_LABELS, FORM_TITLE, formDate, formPrice, oneLine } from "./inventoryForm";
 
 // Word inventory-form export — one "INVENTORY DETAIL FORM" page per stock
 // entry, reproducing the firm's existing paperwork (the Word document Amy
@@ -116,11 +119,6 @@ function esc(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-/** Squash a stored value onto one form line: the paper form gives each field a
- *  single double-spaced line, so newlines in a notes field flow inline. */
-function oneLine(v: string | undefined | null): string {
-  return (v ?? "").replace(/\s+/g, " ").trim();
-}
 
 function run(rPr: string, content: string): string {
   return `<w:r><w:rPr>${rPr}</w:rPr>${content}</w:r>`;
@@ -155,21 +153,7 @@ function emptyPara(mark: string, pPrExtra = ""): string {
 
 // ── Value formatting, matched to the sample literally ─────────────────────
 
-/** ISO yyyy-mm-dd → MM/DD/YY, the form's own date format. Anything that isn't
- *  a stored ISO date prints as typed. */
-function formDate(iso: string | undefined): string {
-  const v = oneLine(iso);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-  return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : v;
-}
 
-/** "$929", "$2025" — a dollar sign and a whole number, no thousands separator
- *  and no cents. Deliberately NOT util.formatPrice(), which emits "$2,025". */
-function formPrice(n: number | null | undefined): string {
-  return n === null || n === undefined || !Number.isFinite(n)
-    ? ""
-    : `$${Math.round(n)}`;
-}
 
 /** "#abc" / "#aabbcc" / "#aabbccdd" → the 6-digit hex OOXML wants. */
 function toDocxColor(c: string, fallback: string): string {
@@ -353,19 +337,8 @@ function photoBox(shapeId: number, inner: string): string {
 
 // ── The form ──────────────────────────────────────────────────────────────
 
-/** The eight labels, exactly as the firm's form prints them. */
-const LABELS = {
-  description: "Item Description:",
-  date: "Date:",
-  quantity: "Quantity:",
-  vendor: "Vendor:",
-  netPrice: "Net Price:",
-  retailPrice: "Retail Price:",
-  sidemark: "Purchased For / Client / Sidemark:",
-  notes: "Notes (fabric info, finish, size, damages, etc.):",
-  inventoryNumber: "Inventory Number:",
-  poNumber: "Purchase Order Number:",
-} as const;
+/** The labels, exactly as the firm's form prints them (see inventoryForm.ts). */
+const LABELS = FORM_LABELS;
 
 /**
  * One filled-in form. Every paragraph, separator and trailing spacer run is
@@ -388,7 +361,7 @@ function formParagraphs(
   const titleRpr = `${GEORGIA}<w:b/><w:sz w:val="${TITLE_SZ}"/>`;
   p.push(
     `<w:p><w:pPr><w:jc w:val="center"/><w:rPr>${titleRpr}</w:rPr></w:pPr>` +
-      `${run(titleRpr, text("INVENTORY DETAIL FORM"))}</w:p>`
+      `${run(titleRpr, text(FORM_TITLE))}</w:p>`
   );
   p.push(`<w:p><w:pPr><w:jc w:val="center"/><w:rPr>${titleRpr}</w:rPr></w:pPr></w:p>`);
   p.push(emptyPara(RPR_LABEL));

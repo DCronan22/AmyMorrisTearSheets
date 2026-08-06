@@ -14,6 +14,8 @@ interface Props {
   firmName: string;
   /** Items to print; defaults to the whole project. */
   items?: Item[];
+  /** Only the active print layout is shown to the print dialog. */
+  active: boolean;
 }
 
 /**
@@ -28,14 +30,15 @@ interface Props {
  * mounted (so images are loaded before the print dialog opens) and renders a
  * page per item, so it must not re-render on every workspace keystroke.
  */
-function TearSheetPrint({ project, style, firmName, items }: Props) {
+function TearSheetPrint({ project, style, firmName, items, active }: Props) {
+  const activeAttr = active ? "1" : "0";
   const list = items ?? project.items;
 
   // Firms with a custom layout print via the absolute-positioned renderer; the
   // default template below is left exactly as-is (the pixel-matched path).
   if (style.sheet) {
     return (
-      <div className="ts-print-root" aria-hidden>
+      <div className="ts-print-root" data-active={activeAttr} aria-hidden>
         {list.map((it) => (
           <section className="ts-page ts-custom" key={it.id}>
             {layoutSheet(it, style, firmName).map((el, i) => (
@@ -59,7 +62,7 @@ function TearSheetPrint({ project, style, firmName, items }: Props) {
   const footer = style.footerText.trim();
 
   return (
-    <div className="ts-print-root" style={vars} aria-hidden>
+    <div className="ts-print-root" style={vars} data-active={activeAttr} aria-hidden>
       {list.map((it) => (
         <section className="ts-page" key={it.id}>
           {logo ? (

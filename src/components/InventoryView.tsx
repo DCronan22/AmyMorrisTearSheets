@@ -54,9 +54,11 @@ interface Props {
   onImport: () => void;
   /** Download the given entries as Word inventory detail forms. */
   onExportDocx: (items: InventoryItem[]) => void;
-  /** True while a Word export is building, to stop a double-click. */
+  /** Export the same detail form as PowerPoint slides. */
+  onExportPptx: (items: InventoryItem[]) => void;
+  /** True while an export is building, to stop a double-click. */
   exporting?: boolean;
-  /** Print the given inventory entries as tear sheets. */
+  /** Print the given entries as the firm's inventory detail form. */
   onPrint: (items: InventoryItem[]) => void;
   /** Delete the selected entries (with confirmation). */
   onDeleteSelected: () => void;
@@ -84,6 +86,7 @@ export default function InventoryView({
   onAddFromDatabase,
   onImport,
   onExportDocx,
+  onExportPptx,
   exporting = false,
   onPrint,
   onDeleteSelected,
@@ -133,8 +136,8 @@ export default function InventoryView({
             disabled={filtered.length === 0}
             title={
               hasFilter
-                ? "Print the entries matching these filters as tear sheets"
-                : "Print every inventory entry as a tear sheet"
+                ? "Print the entries matching these filters as inventory detail forms"
+                : "Print every inventory entry as an inventory detail form"
             }
           >
             Print{hasFilter ? ` (${filtered.length})` : ""}
@@ -159,6 +162,24 @@ export default function InventoryView({
                 }
               >
                 Word — selected items
+                {selectedCount > 0 ? ` (${selectedCount})` : ""}
+              </button>
+              <hr className="menu-sep" />
+              <button
+                disabled={filtered.length === 0 || exporting}
+                onClick={() => onExportPptx(filtered)}
+                title="The same inventory detail form, one slide per entry"
+              >
+                PowerPoint (.pptx)
+                {hasFilter ? ` — ${filtered.length} shown` : ""}
+              </button>
+              <button
+                disabled={selectedCount === 0 || exporting}
+                onClick={() =>
+                  onExportPptx(inventory.filter((inv) => selected.has(inv.id)))
+                }
+              >
+                PowerPoint — selected items
                 {selectedCount > 0 ? ` (${selectedCount})` : ""}
               </button>
             </div>
@@ -186,7 +207,7 @@ export default function InventoryView({
             onClick={() =>
               onPrint(inventory.filter((inv) => selected.has(inv.id)))
             }
-            title="Print only the selected entries as tear sheets"
+            title="Print only the selected entries as inventory detail forms"
           >
             Print selected
           </button>

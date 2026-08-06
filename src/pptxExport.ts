@@ -63,7 +63,7 @@ const PH_FILL = "ECE8E1";
 const PH_TEXT_COLOR = "B3A995";
 
 /** A decoded image ready for embedding: data URL + natural pixel size. */
-interface EmbeddableImage {
+export interface EmbeddableImage {
   data: string;
   w: number;
   h: number;
@@ -111,7 +111,7 @@ function reencodeToPng(img: HTMLImageElement): string {
  * headers fail here, and the slide falls back to the "No image" placeholder
  * (mirroring the print view's onImgError fallback). Returns null on failure.
  */
-async function loadImage(src: string): Promise<EmbeddableImage | null> {
+export async function loadImage(src: string): Promise<EmbeddableImage | null> {
   try {
     let dataUrl: string;
     if (src.startsWith("data:image/")) {
