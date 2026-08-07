@@ -66,6 +66,12 @@ export interface Project {
   logoUrl: string;     // Optional firm/client logo (data URL or URL)
   notes: string;
   items: Item[];
+  // The row's `updated_at` exactly as the database returned it, used as a
+  // "this is the version I loaded" token so a save can detect that a teammate
+  // wrote to the project first (see saveProject). Treat it as opaque: never
+  // parse or reformat it, or it will stop matching the stored timestamp.
+  // Absent on projects that don't come from the database (backups, drafts).
+  updatedAt?: string;
 }
 
 /** The full persisted application state. */

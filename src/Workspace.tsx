@@ -22,7 +22,9 @@ import { exportItemsToPptx } from "./pptxExport";
 import {
   createProject as dbCreateProject,
   deleteProject as dbDeleteProject,
+  fetchProject,
   fetchProjects,
+  ProjectConflictError,
   saveProject,
 } from "./data/projects";
 import {
@@ -76,7 +78,20 @@ export default function Workspace({
   onOpenAdmin,
   onSignOut,
 }: Props) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjectsState] = useState<Project[]>([]);
+  // A synchronously-updated mirror of `projects`. Saves run inside an async
+  // queue and need the newest version token the instant they start, which
+  // React state (applied on the next render) can't be relied on to give them.
+  // Every write to the project list goes through `updateProjects` so the two
+  // can never drift apart.
+  const projectsRef = useRef<Project[]>([]);
+  const updateProjects = useCallback(
+    (updater: (ps: Project[]) => Project[]) => {
+      projectsRef.current = updater(projectsRef.current);
+      setProjectsState(projectsRef.current);
+    },
+    []
+  );
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -178,7 +193,7 @@ export default function Workspace({
     fetchProjects(firm.id)
       .then((ps) => {
         if (!active) return;
-        setProjects(ps);
+        updateProjects(() => ps);
         setActiveProjectId(ps[0]?.id ?? null);
         setLoaded(true);
       })
@@ -190,7 +205,7 @@ export default function Workspace({
     return () => {
       active = false;
     };
-  }, [firm.id]);
+  }, [firm.id, updateProjects]);
 
   const project: Project | undefined = useMemo(
     () => projects.find((p) => p.id === activeProjectId),
@@ -329,61 +344,175 @@ export default function Workspace({
 
   // --- Persistence ----------------------------------------------------------
 
-  // Save to the database. State was already updated optimistically by
-  // applyProjectChange, and the save echoes nothing back, so there's no
-  // write-back on success (which also means out-of-order replies are harmless).
-  // Exception: items still carrying base64 data-URL photos (fresh picks,
-  // imports, legacy rows) get those uploaded to Storage first, and the small
-  // public URLs are adopted back into state so the next save doesn't re-upload.
+  // Briefly show a confirmation toast (e.g. "Saved to library").
+  const flashMsg = useCallback((msg: string) => {
+    setFlash(msg);
+    setTimeout(() => setFlash((m) => (m === msg ? null : m)), 2600);
+  }, []);
+
+  // Save the project to the database. State was already updated optimistically
+  // by applyProjectChange.
+  //
+  // A project's items are stored as a single jsonb blob, so when two people
+  // have the same project open, a plain write would erase whatever the other
+  // one saved in the meantime. saveProject instead refuses a save whose
+  // version token is stale and raises ProjectConflictError; we recover by
+  // re-reading the teammate's current version and replaying this change on top
+  // of it, so both survive. Retries are bounded — a project that keeps being
+  // written by others should ask for a reload rather than spin.
+  //
+  // Items still carrying base64 data-URL photos (fresh picks, imports, legacy
+  // rows) get those uploaded to Storage first, and the small public URLs are
+  // adopted back into state so the next save doesn't re-upload them.
   const persist = useCallback(
-    async (p: Project) => {
+    async (projectId: string, mut: (p: Project) => Project) => {
       setSaveError(null);
-      try {
-        const { items, changed } = await offloadItemImages(p.items, firm.id);
-        if (changed) {
-          const swapped = new Map(
-            p.items.map((orig, i) => [orig.id, { orig, next: items[i] }])
+      let merged = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        let target: Project | undefined;
+        if (attempt === 0) {
+          // The change is already in local state; save exactly that.
+          target = projectsRef.current.find((p) => p.id === projectId);
+          // Deleted locally while this was queued — nothing left to save.
+          if (!target) return;
+        } else {
+          // Someone else got there first. Take their version and replay our
+          // own change on top of it, then show it to the user right away.
+          const fresh = await fetchProject(projectId).catch(() => undefined);
+          if (fresh === undefined) {
+            setSaveError("Changes could not be saved. Check your connection.");
+            return;
+          }
+          if (fresh === null) {
+            setSaveError(
+              "This project is no longer available (it may have been deleted)."
+            );
+            return;
+          }
+          target = mut(fresh);
+          const replayed = target;
+          updateProjects((ps) =>
+            ps.map((p) => (p.id === projectId ? replayed : p))
           );
-          setProjects((ps) =>
-            ps.map((proj) =>
-              proj.id !== p.id
-                ? proj
-                : {
-                    ...proj,
-                    // Only swap an image the user hasn't changed again since
-                    // this save started.
-                    items: proj.items.map((it) => {
-                      const u = swapped.get(it.id);
-                      return u &&
-                        u.next.imageUrl !== u.orig.imageUrl &&
-                        it.imageUrl === u.orig.imageUrl
-                        ? { ...it, imageUrl: u.next.imageUrl }
-                        : it;
-                    }),
-                  }
-            )
-          );
+          merged = true;
         }
-        await saveProject(changed ? { ...p, items } : p);
-      } catch (e) {
-        setSaveError(
-          e instanceof Error ? e.message : "Changes could not be saved."
-        );
+
+        try {
+          const { items, changed } = await offloadItemImages(
+            target.items,
+            firm.id
+          );
+          if (changed) {
+            const swapped = new Map(
+              target.items.map((orig, i) => [orig.id, { orig, next: items[i] }])
+            );
+            updateProjects((ps) =>
+              ps.map((proj) =>
+                proj.id !== projectId
+                  ? proj
+                  : {
+                      ...proj,
+                      // Only swap an image the user hasn't changed again since
+                      // this save started.
+                      items: proj.items.map((it) => {
+                        const u = swapped.get(it.id);
+                        return u &&
+                          u.next.imageUrl !== u.orig.imageUrl &&
+                          it.imageUrl === u.orig.imageUrl
+                          ? { ...it, imageUrl: u.next.imageUrl }
+                          : it;
+                      }),
+                    }
+              )
+            );
+          }
+          const updatedAt = await saveProject(
+            changed ? { ...target, items } : target
+          );
+          // Hold on to the new version token so the next save is checked
+          // against the row we just wrote.
+          updateProjects((ps) =>
+            ps.map((p) => (p.id === projectId ? { ...p, updatedAt } : p))
+          );
+          if (merged) {
+            flashMsg(
+              "Someone else on your team was editing this project too — both sets of changes were kept."
+            );
+          }
+          return;
+        } catch (e) {
+          if (e instanceof ProjectConflictError) continue;
+          setSaveError(
+            e instanceof Error ? e.message : "Changes could not be saved."
+          );
+          return;
+        }
       }
+      setSaveError(
+        "Couldn't save — this project is being changed by several people at once. Please reload the page and try again."
+      );
     },
-    [firm.id]
+    [firm.id, updateProjects, flashMsg]
   );
 
+  // Saves are queued so that a retry (which re-reads and replays) can never
+  // interleave with the next edit's save.
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const enqueueSave = useCallback(
+    (projectId: string, mut: (p: Project) => Project) => {
+      saveQueue.current = saveQueue.current
+        // persist handles its own errors; this guard exists so that even an
+        // unexpected throw can't reject the chain and silently stop every
+        // later save.
+        .then(() => persist(projectId, mut).catch(() => {}));
+    },
+    [persist]
+  );
+
+  // Projects are loaded once when the workspace opens, so a tab left open all
+  // day would otherwise show a snapshot that is hours stale — and with a whole
+  // team on the same projects, stale is exactly when people tread on each
+  // other. Re-read the firm's projects whenever the tab comes back to the
+  // foreground.
+  //
+  // The re-read joins the same queue as saves, so it can never overlap one:
+  // it always sees the server state *after* any pending save has landed, and
+  // an edit made while it runs queues up behind it.
+  const refreshProjects = useCallback(() => {
+    if (document.visibilityState !== "visible") return;
+    saveQueue.current = saveQueue.current.then(async () => {
+      // A background refresh failing isn't worth interrupting the user; the
+      // next save surfaces any real connection problem.
+      const ps = await fetchProjects(firm.id).catch(() => null);
+      if (!ps) return;
+      updateProjects(() => ps);
+      // Someone else may have deleted whatever project was open.
+      setActiveProjectId((cur) =>
+        cur && ps.some((p) => p.id === cur) ? cur : ps[0]?.id ?? null
+      );
+    });
+  }, [firm.id, updateProjects]);
+
+  useEffect(() => {
+    document.addEventListener("visibilitychange", refreshProjects);
+    window.addEventListener("focus", refreshProjects);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshProjects);
+      window.removeEventListener("focus", refreshProjects);
+    };
+  }, [refreshProjects]);
+
   // Apply a change to the active project: update local state immediately, then
-  // persist to the database.
+  // persist to the database. `mut` must be replayable — it may be applied a
+  // second time on top of a teammate's newer version of the project.
   const applyProjectChange = useCallback(
     (mut: (p: Project) => Project) => {
       if (!project) return;
       const updated = mut(project);
-      setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)));
-      void persist(updated);
+      updateProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)));
+      enqueueSave(updated.id, mut);
     },
-    [project, persist]
+    [project, updateProjects, enqueueSave]
   );
 
   function saveItem(item: Item) {
@@ -459,12 +588,6 @@ export default function Workspace({
   }
 
   // --- Master library -------------------------------------------------------
-
-  // Briefly show a confirmation toast (e.g. "Saved to library").
-  function flashMsg(msg: string) {
-    setFlash(msg);
-    setTimeout(() => setFlash((m) => (m === msg ? null : m)), 2600);
-  }
 
   // Load the firm's library the first time it's needed (library tab / picker).
   async function ensureLibrary() {
@@ -1055,7 +1178,7 @@ export default function Workspace({
     setSaveError(null);
     try {
       const stored = await dbCreateProject(firm.id, emptyProject());
-      setProjects((ps) => [stored, ...ps]);
+      updateProjects((ps) => [stored, ...ps]);
       setActiveProjectId(stored.id);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Could not create project.");
@@ -1071,7 +1194,7 @@ export default function Workspace({
         ...project,
         name: `${project.name} (copy)`,
       });
-      setProjects((ps) => [stored, ...ps]);
+      updateProjects((ps) => [stored, ...ps]);
       setActiveProjectId(stored.id);
     } catch (e) {
       setSaveError(
@@ -1104,7 +1227,7 @@ export default function Workspace({
       const stored = await Promise.all(
         restored.map((p) => dbCreateProject(firm.id, p))
       );
-      setProjects((ps) => [...stored, ...ps]);
+      updateProjects((ps) => [...stored, ...ps]);
       setActiveProjectId(stored[0].id);
     } catch (e) {
       setSaveError(
@@ -1124,7 +1247,7 @@ export default function Workspace({
     setSaveError(null);
     try {
       await dbDeleteProject(id);
-      setProjects((ps) => {
+      updateProjects((ps) => {
         const next = ps.filter((p) => p.id !== id);
         setActiveProjectId(next[0]?.id ?? null);
         return next;
@@ -1538,7 +1661,19 @@ export default function Workspace({
             <ProjectHeaderForm
               project={project}
               onSave={(p) => {
-                applyProjectChange(() => p);
+                // Take only the fields this form edits, never the whole draft:
+                // the draft carries the item list as it was when the form was
+                // opened, and if this save has to be replayed on top of a
+                // teammate's newer version that stale list would erase their
+                // work.
+                applyProjectChange((prev) => ({
+                  ...prev,
+                  name: p.name,
+                  client: p.client,
+                  location: p.location,
+                  date: p.date,
+                  notes: p.notes,
+                }));
                 setEditingHeader(false);
               }}
               onCancel={() => setEditingHeader(false)}
