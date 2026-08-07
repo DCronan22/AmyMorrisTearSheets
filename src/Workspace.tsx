@@ -478,8 +478,16 @@ export default function Workspace({
   // The re-read joins the same queue as saves, so it can never overlap one:
   // it always sees the server state *after* any pending save has landed, and
   // an edit made while it runs queues up behind it.
+  const lastRefresh = useRef(0);
   const refreshProjects = useCallback(() => {
     if (document.visibilityState !== "visible") return;
+    // Focus fires on every alt-tab and a refresh re-reads every project the
+    // firm has, so rate-limit it. Someone flicking between windows doesn't
+    // need a fresh read each time; someone coming back to a tab they left
+    // this morning does.
+    const now = Date.now();
+    if (now - lastRefresh.current < 30_000) return;
+    lastRefresh.current = now;
     saveQueue.current = saveQueue.current.then(async () => {
       // A background refresh failing isn't worth interrupting the user; the
       // next save surfaces any real connection problem.
