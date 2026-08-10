@@ -149,6 +149,11 @@ export default function Workspace({
   // In flight while the selected entries are being copied into the database,
   // so the button can't be clicked twice into a duplicate insert.
   const [addingToDatabase, setAddingToDatabase] = useState(false);
+  // "From inventory" pickers, opened from a client project and the Database tab.
+  const [pickingInventoryForClient, setPickingInventoryForClient] =
+    useState(false);
+  const [pickingInventoryForDatabase, setPickingInventoryForDatabase] =
+    useState(false);
 
   const [flash, setFlash] = useState<string | null>(null);
   // Guards against double-clicking the PowerPoint export while images fetch.
@@ -818,12 +823,12 @@ export default function Workspace({
    * is already in the database is skipped rather than duplicated, the same rule
    * client items mirror by.
    */
-  async function addInventorySelectionToDatabase() {
-    const chosen = inventory.filter((inv) => inventorySelected.has(inv.id));
+  async function addInventoryItemsToDatabase(chosen: InventoryItem[]) {
     // The dedup set is built per call, so a second click while the first insert
     // is still in flight would add the same pieces twice — the button is
     // disabled meanwhile, and this guards the handler itself.
-    if (!chosen.length || addingToDatabase) return;
+    if (!INVENTORY_ENABLED || !chosen.length || addingToDatabase) return;
+    setPickingInventoryForDatabase(false);
     const named = chosen.filter((inv) => inv.name.trim());
     const unnamed = chosen.length - named.length;
     setAddingToDatabase(true);
@@ -868,6 +873,48 @@ export default function Workspace({
     } finally {
       setAddingToDatabase(false);
     }
+  }
+
+  // From the Inventory tab's selection strip.
+  function addInventorySelectionToDatabase() {
+    void addInventoryItemsToDatabase(
+      inventory.filter((inv) => inventorySelected.has(inv.id))
+    );
+  }
+
+  /**
+   * From the Database tab: open the inventory picker. The inventory is loaded
+   * on demand, the same way the database is for the "From database" pickers.
+   */
+  function openInventoryPickerForDatabase() {
+    if (!INVENTORY_ENABLED) return;
+    setPickingInventoryForDatabase(true);
+    void ensureInventory();
+  }
+
+  /**
+   * Drop chosen inventory pieces into the active project as independent copies
+   * (see inventoryToSpec — the stock details stay in the inventory). The on-hand
+   * counts are not stepped down: specifying a piece for a client isn't the same
+   * event as it leaving the warehouse.
+   */
+  function addInventoryItemsToProject(invItems: InventoryItem[]) {
+    if (!INVENTORY_ENABLED || !invItems.length) return;
+    const copies = invItems.map(inventoryToClientItem);
+    applyProjectChange((p) => ({ ...p, items: [...p.items, ...copies] }));
+    setPickingInventoryForClient(false);
+    flashMsg(
+      `Added ${copies.length} item${copies.length === 1 ? "" : "s"} to ${
+        project?.name ?? "the project"
+      }.`
+    );
+  }
+
+  /** From a client project: open the inventory picker. */
+  function openInventoryPickerForClient() {
+    if (!INVENTORY_ENABLED) return;
+    setPickingInventoryForClient(true);
+    void ensureInventory();
   }
 
   function addLibrarySelectionToClient() {
@@ -1561,6 +1608,15 @@ export default function Workspace({
                   >
                     From database
                   </button>
+                  {INVENTORY_ENABLED && (
+                    <button
+                      className="btn"
+                      onClick={openInventoryPickerForClient}
+                      title="Add pieces you have in stock (your inventory is not changed)"
+                    >
+                      From inventory
+                    </button>
+                  )}
                   <button
                     className="btn"
                     onClick={() => {
@@ -1693,6 +1749,7 @@ export default function Workspace({
               setImportTarget("library");
               setImporting(true);
             }}
+            onAddFromInventory={openInventoryPickerForDatabase}
             onPrint={(items) => print(items.map(libraryToItem))}
             onDeleteSelected={removeLibrarySelected}
             onClearSelection={() => setLibrarySelected(new Set())}
@@ -1951,6 +2008,30 @@ export default function Workspace({
           clientName="your inventory"
           onConfirm={(items) => void addLibraryItemsToInventory(items)}
           onClose={() => setPickingForInventory(false)}
+        />
+      )}
+      {pickingInventoryForClient && (
+        <LibraryPicker
+          library={inventory}
+          loading={inventoryLoading}
+          error={inventoryError}
+          clientName={project.name}
+          sourceName="inventory"
+          emptyHint="Add pieces from the Inventory tab, then pull them in here."
+          onConfirm={addInventoryItemsToProject}
+          onClose={() => setPickingInventoryForClient(false)}
+        />
+      )}
+      {pickingInventoryForDatabase && (
+        <LibraryPicker
+          library={inventory}
+          loading={inventoryLoading}
+          error={inventoryError}
+          clientName="your database"
+          sourceName="inventory"
+          emptyHint="Add pieces from the Inventory tab, then pull them in here."
+          onConfirm={(items) => void addInventoryItemsToDatabase(items)}
+          onClose={() => setPickingInventoryForDatabase(false)}
         />
       )}
       {importing && (

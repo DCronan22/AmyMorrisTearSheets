@@ -16,6 +16,8 @@ interface Props {
   onEdit: (li: LibraryItem) => void;
   onDelete: (id: string) => void;
   onImport: () => void;
+  /** Open the picker that copies pieces in from the firm's inventory. */
+  onAddFromInventory: () => void;
   /** Print the given database items as tear sheets (all-filtered or selected). */
   onPrint: (items: LibraryItem[]) => void;
   /** Delete the selected database items (with confirmation). */
@@ -46,6 +48,7 @@ export default function LibraryView({
   onEdit,
   onDelete,
   onImport,
+  onAddFromInventory,
   onPrint,
   onDeleteSelected,
   onClearSelection,
@@ -76,6 +79,15 @@ export default function LibraryView({
           <button className="btn primary" onClick={onAdd}>
             ＋ Add to database
           </button>
+          {INVENTORY_ENABLED && (
+            <button
+              className="btn"
+              onClick={onAddFromInventory}
+              title="Copy pieces you have in stock into the database (your inventory is not changed)"
+            >
+              From inventory
+            </button>
+          )}
           <button
             className="btn"
             onClick={onImport}
