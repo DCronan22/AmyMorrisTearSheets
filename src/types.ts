@@ -12,6 +12,12 @@ export interface StockFields {
   /** What the firm paid per unit. */
   netPrice?: number | null;
   /**
+   * Shipping / delivery cost per unit, kept separate from the net price so the
+   * firm can see what a piece cost to get here. Internal like the net price —
+   * it never crosses onto a client project or a tear sheet.
+   */
+  freight?: number | null;
+  /**
    * The client-facing price per unit. `price` mirrors it, so cards, tear sheets
    * and exports keep reading the one existing price field.
    */
@@ -532,6 +538,7 @@ export function sanitizeStockFields(raw: unknown): StockFields {
     out.acquiredDate = r.acquiredDate.trim();
   }
   if (money(r.netPrice) !== null) out.netPrice = money(r.netPrice);
+  if (money(r.freight) !== null) out.freight = money(r.freight);
   if (money(r.retailPrice) !== null) out.retailPrice = money(r.retailPrice);
   if (typeof r.inventoryNumber === "string" && r.inventoryNumber.trim()) {
     out.inventoryNumber = r.inventoryNumber.trim();

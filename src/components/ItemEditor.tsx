@@ -21,8 +21,9 @@ interface Props {
   libraryMode?: boolean;
   /**
    * Editing a physical inventory entry: adds the stock details (date acquired,
-   * on-hand quantity, net + retail price, inventory number, PO number) and
-   * replaces the single "Price (each)" field with the net/retail pair.
+   * on-hand quantity, net price, freight, retail price, inventory number, PO
+   * number) and replaces the single "Price (each)" field with the net/retail
+   * pair.
    */
   inventoryMode?: boolean;
   /** Overrides the modal heading (e.g. "Edit inventory item"). */
@@ -291,6 +292,14 @@ export default function ItemEditor({
                 />
               </label>
               <label>
+                <span>Freight (each)</span>
+                <input
+                  type="number"
+                  value={numValue(draft.freight)}
+                  onChange={(e) => set("freight", toNum(e.target.value))}
+                />
+              </label>
+              <label>
                 <span>Retail price (each)</span>
                 <input
                   type="number"
@@ -316,7 +325,7 @@ export default function ItemEditor({
               </label>
               <p className="form-note">
                 The retail price is what appears on tear sheets and exports; the
-                net price stays internal to your team.
+                net price and freight stay internal to your team.
               </p>
             </>
           )}

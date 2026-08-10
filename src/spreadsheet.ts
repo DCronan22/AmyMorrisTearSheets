@@ -29,6 +29,7 @@ const HEADER_ALIASES: Record<keyof Item, string[]> = {
   // in the inventory item editor.
   acquiredDate: [],
   netPrice: [],
+  freight: [],
   retailPrice: [],
   inventoryNumber: [],
   poNumber: [],

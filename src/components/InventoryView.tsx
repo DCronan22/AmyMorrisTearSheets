@@ -8,21 +8,31 @@ import { formatDate, formatPrice } from "../util";
 
 /**
  * The stock details under an inventory card — acquisition date, the firm's own
- * numbers, and the cost side of the price. Rows are omitted when unset, so an
- * entry with none of them looks exactly as it did before.
+ * numbers, and the cost side of the price (net + freight). Rows are omitted
+ * when unset, so an entry with none of them looks exactly as it did before.
  */
 function StockDetails({ inv }: { inv: InventoryItem }) {
   const rows: [string, string][] = [];
   if (inv.inventoryNumber) rows.push(["Inv #", inv.inventoryNumber]);
   if (inv.poNumber) rows.push(["PO #", inv.poNumber]);
   if (inv.acquiredDate) rows.push(["Acquired", formatDate(inv.acquiredDate)]);
-  // The card's own price line already shows the retail figure, so the two are
-  // only spelled out when there's a cost to compare it against.
+  // The card's own price line already shows the retail figure, so net and
+  // retail are only spelled out when there's a cost to compare them against.
+  // Freight stands on its own — it's a cost the firm tracks whether or not the
+  // net price was filled in.
   if (inv.netPrice !== null && inv.netPrice !== undefined) {
     rows.push(["Net", formatPrice(inv.netPrice)]);
-    if (inv.retailPrice !== null && inv.retailPrice !== undefined) {
-      rows.push(["Retail", formatPrice(inv.retailPrice)]);
-    }
+  }
+  if (inv.freight !== null && inv.freight !== undefined) {
+    rows.push(["Freight", formatPrice(inv.freight)]);
+  }
+  if (
+    inv.netPrice !== null &&
+    inv.netPrice !== undefined &&
+    inv.retailPrice !== null &&
+    inv.retailPrice !== undefined
+  ) {
+    rows.push(["Retail", formatPrice(inv.retailPrice)]);
   }
   if (!rows.length) return null;
   return (
