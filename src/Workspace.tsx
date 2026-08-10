@@ -8,6 +8,7 @@ import {
   defaultFirmStyle,
   inventoryToClientItem,
   inventoryToDraft,
+  inventoryToSpec,
   itemToLibrary,
   libraryToItem,
   newId,
@@ -145,6 +146,9 @@ export default function Workspace({
   const [editingInventory, setEditingInventory] = useState<Item | null>(null);
   // "Add from database" picker opened from the Inventory view.
   const [pickingForInventory, setPickingForInventory] = useState(false);
+  // In flight while the selected entries are being copied into the database,
+  // so the button can't be clicked twice into a duplicate insert.
+  const [addingToDatabase, setAddingToDatabase] = useState(false);
 
   const [flash, setFlash] = useState<string | null>(null);
   // Guards against double-clicking the PowerPoint export while images fetch.
@@ -801,6 +805,69 @@ export default function Workspace({
     flashMsg(
       `Added ${added.length} item${added.length === 1 ? "" : "s"} to ${project.name}.`
     );
+  }
+
+  /**
+   * Copy the selected inventory entries into the firm's database as reusable
+   * master entries, leaving the inventory itself untouched.
+   *
+   * The pieces are converted with inventoryToSpec — product spec only, retail
+   * price as `price`, no stock details — so a copy is indistinguishable from
+   * any other database entry and prints/exports through the ordinary tear-sheet
+   * path rather than the inventory detail form. Anything whose name+vendor+SKU
+   * is already in the database is skipped rather than duplicated, the same rule
+   * client items mirror by.
+   */
+  async function addInventorySelectionToDatabase() {
+    const chosen = inventory.filter((inv) => inventorySelected.has(inv.id));
+    // The dedup set is built per call, so a second click while the first insert
+    // is still in flight would add the same pieces twice — the button is
+    // disabled meanwhile, and this guards the handler itself.
+    if (!chosen.length || addingToDatabase) return;
+    const named = chosen.filter((inv) => inv.name.trim());
+    const unnamed = chosen.length - named.length;
+    setAddingToDatabase(true);
+    setInventoryError(null);
+    try {
+      // Dedup against the database. When it isn't loaded yet, fetch just the
+      // name/vendor/sku keys — not every row with its embedded images.
+      const keys = libraryLoaded ? library : await fetchLibraryKeys(firm.id);
+      const seen = new Set(keys.map(catalogKey));
+      const toAdd: Omit<LibraryItem, "id">[] = [];
+      let duplicates = 0;
+      for (const inv of named) {
+        const k = catalogKey(inv);
+        if (seen.has(k)) {
+          duplicates++;
+          continue;
+        }
+        seen.add(k);
+        toAdd.push(inventoryToSpec(inv));
+      }
+      if (toAdd.length) {
+        const saved = await createLibraryItems(firm.id, toAdd);
+        if (libraryLoaded) setLibrary((ls) => [...saved, ...ls]);
+      }
+      setInventorySelected(new Set());
+      if (!toAdd.length && duplicates && !unnamed) {
+        flashMsg(
+          duplicates === 1
+            ? "That piece is already in your database."
+            : `All ${duplicates} selected pieces are already in your database.`
+        );
+      } else {
+        const parts = [`${toAdd.length} added to your database`];
+        if (duplicates) parts.push(`${duplicates} already there`);
+        if (unnamed) parts.push(`${unnamed} skipped (no name)`);
+        flashMsg(`${parts.join("; ")}.`);
+      }
+    } catch (e) {
+      setInventoryError(
+        e instanceof Error ? e.message : "Could not add to the database."
+      );
+    } finally {
+      setAddingToDatabase(false);
+    }
   }
 
   function addLibrarySelectionToClient() {
@@ -1659,6 +1726,8 @@ export default function Workspace({
             onDeleteSelected={removeInventorySelected}
             onClearSelection={() => setInventorySelected(new Set())}
             onAddSelectedToClient={addInventorySelectionToClient}
+            onAddSelectedToDatabase={() => void addInventorySelectionToDatabase()}
+            addingToDatabase={addingToDatabase}
             activeClientName={project.name}
             showVendor={showVendor}
           />

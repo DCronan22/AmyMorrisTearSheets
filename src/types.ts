@@ -666,21 +666,24 @@ export function inventoryToItem(inv: InventoryItem): Item {
 }
 
 /**
- * Drop an inventory entry into a client project as a fresh, independent item.
+ * The product spec of an inventory entry, with the stock details left behind —
+ * the shape a piece takes when it leaves the inventory for a client project or
+ * the database.
  *
  * Deliberately NOT inventoryToItem: that keeps the stock fields (they ride
  * along so the shared editor can round-trip an entry), and those must not
- * follow a piece onto a client's project. The firm's **net price** in
- * particular is internal — it would otherwise sit in the project's stored data
- * and reappear if that item were later saved to the database and exported as
- * an inventory form. Only the retail price crosses, as the item's `price`.
+ * follow a piece out of the inventory. The firm's **net price and freight** in
+ * particular are internal — they would otherwise sit in the project's or
+ * database's stored data and reappear if that piece were later exported as an
+ * inventory form. Only the retail price crosses, as the item's `price`, which
+ * is the field the tear sheets and every export already read.
  *
- * Quantity starts at 1: the on-hand count is stock the firm holds, not how many
- * the client is specifying.
+ * That's what makes a copied piece print and export exactly like anything else
+ * in that project or the database: it carries no inventory-only data, so the
+ * normal tear-sheet path is the only one that can apply to it.
  */
-export function inventoryToClientItem(inv: InventoryItem): Item {
+export function inventoryToSpec(inv: InventoryItem): Omit<LibraryItem, "id"> {
   return {
-    ...emptyItem(),
     name: inv.name,
     vendor: inv.vendor,
     collection: inv.collection,
@@ -696,6 +699,17 @@ export function inventoryToClientItem(inv: InventoryItem): Item {
     productUrl: inv.productUrl,
     upholstered: inv.upholstered ?? true,
   };
+}
+
+/**
+ * Drop an inventory entry into a client project as a fresh, independent item
+ * (see inventoryToSpec for what is and isn't carried across).
+ *
+ * Quantity starts at 1: the on-hand count is stock the firm holds, not how many
+ * the client is specifying. Room is blank, so it lands under "Unassigned".
+ */
+export function inventoryToClientItem(inv: InventoryItem): Item {
+  return { ...emptyItem(), ...inventoryToSpec(inv) };
 }
 
 /**

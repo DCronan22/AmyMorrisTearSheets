@@ -76,6 +76,10 @@ interface Props {
   onClearSelection: () => void;
   /** Copy the selected entries into the open client project. */
   onAddSelectedToClient: () => void;
+  /** Copy the selected entries into the firm's database as master entries. */
+  onAddSelectedToDatabase: () => void;
+  /** True while that copy is saving, to stop a double-click duplicating it. */
+  addingToDatabase?: boolean;
   /** Name of the active client project, for the "add to" button label. */
   activeClientName: string | null;
   /** Show the vendor on each card (visual only). */
@@ -106,6 +110,8 @@ export default function InventoryView({
   onDeleteSelected,
   onClearSelection,
   onAddSelectedToClient,
+  onAddSelectedToDatabase,
+  addingToDatabase = false,
   activeClientName,
   showVendor = true,
 }: Props) {
@@ -229,6 +235,14 @@ export default function InventoryView({
             }
           >
             Add to {activeClientName ?? "client"}
+          </button>
+          <button
+            className="btn ghost small"
+            onClick={onAddSelectedToDatabase}
+            disabled={addingToDatabase}
+            title="Copy the selected pieces into your database as reusable tear sheets (stock details stay here)"
+          >
+            {addingToDatabase ? "Adding…" : "Add to database"}
           </button>
           <button
             className="btn ghost small"
