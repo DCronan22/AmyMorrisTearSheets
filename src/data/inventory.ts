@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { fetchAllRows, NEWEST_FIRST } from "./fetchAll";
 import { offloadDataUrl, offloadItemImages, isDataUrlImage } from "../lib/imageStore";
 import type { InventoryItem, LibraryItem } from "../types";
 import { itemToLibrary, sanitizeItem, syncStockPricing } from "../types";
@@ -70,15 +71,15 @@ function inventoryToData(li: Omit<LibraryItem, "id">): Omit<LibraryItem, "id"> {
   return data;
 }
 
-/** Load a firm's inventory, newest-updated first. */
+/** Load a firm's whole inventory, newest-updated first. */
 export async function fetchInventory(firmId: string): Promise<InventoryItem[]> {
-  const { data, error } = await supabase
-    .from("inventory_items")
-    .select("*")
-    .eq("firm_id", firmId)
-    .order("updated_at", { ascending: false });
+  const { data, error } = await fetchAllRows<InventoryRow>(
+    (opts) =>
+      supabase.from("inventory_items").select("*", opts).eq("firm_id", firmId),
+    NEWEST_FIRST
+  );
   if (error) throw mapInventoryError(error);
-  return (data as InventoryRow[]).map(rowToInventory);
+  return data.map(rowToInventory);
 }
 
 /** Insert one inventory entry for the firm. The DB generates the uuid. */

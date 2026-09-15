@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { byId, fetchAllRows, NEWEST_FIRST } from "./fetchAll";
 import { offloadDataUrl, offloadItemImages, isDataUrlImage } from "../lib/imageStore";
 import type { LibraryItem } from "../types";
 import { itemToLibrary, sanitizeItem } from "../types";
@@ -30,15 +31,15 @@ function libraryToData(li: Omit<LibraryItem, "id">): Omit<LibraryItem, "id"> {
   return data;
 }
 
-/** Load a firm's library, newest-updated first. */
+/** Load a firm's whole library, newest-updated first. */
 export async function fetchLibrary(firmId: string): Promise<LibraryItem[]> {
-  const { data, error } = await supabase
-    .from("library_items")
-    .select("*")
-    .eq("firm_id", firmId)
-    .order("updated_at", { ascending: false });
+  const { data, error } = await fetchAllRows<LibraryRow>(
+    (opts) =>
+      supabase.from("library_items").select("*", opts).eq("firm_id", firmId),
+    NEWEST_FIRST
+  );
   if (error) throw error;
-  return (data as LibraryRow[]).map(rowToLibrary);
+  return data.map(rowToLibrary);
 }
 
 /**
@@ -48,14 +49,23 @@ export async function fetchLibrary(firmId: string): Promise<LibraryItem[]> {
 export async function fetchLibraryKeys(
   firmId: string
 ): Promise<{ name: string; vendor: string; sku: string }[]> {
-  const { data, error } = await supabase
-    .from("library_items")
-    .select("name:data->>name, vendor:data->>vendor, sku:data->>sku")
-    .eq("firm_id", firmId);
+  // `id` is selected only so the rows can be paged.
+  const { data, error } = await fetchAllRows<{
+    id: string;
+    name: string | null;
+    vendor: string | null;
+    sku: string | null;
+  }>(
+    (opts) =>
+      supabase
+        .from("library_items")
+        .select("id, name:data->>name, vendor:data->>vendor, sku:data->>sku", opts)
+        .eq("firm_id", firmId),
+    // Order is irrelevant for a dedup set; id is simply the cheapest to give.
+    { column: "id", ascending: true, compare: byId }
+  );
   if (error) throw error;
-  return (
-    data as { name: string | null; vendor: string | null; sku: string | null }[]
-  ).map((r) => ({
+  return data.map((r) => ({
     name: r.name ?? "",
     vendor: r.vendor ?? "",
     sku: r.sku ?? "",

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { fetchAllRows } from "./fetchAll";
 import { authedPostJson, apiErrorMessage } from "../lib/api";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
 import { withSafeStyle } from "../types";
@@ -8,22 +9,34 @@ import { withSafeStyle } from "../types";
 // an error — these helpers are a convenience, not the security boundary.
 
 export async function fetchFirms(): Promise<Firm[]> {
-  const { data, error } = await supabase
-    .from("firms")
-    .select("*")
-    .order("name", { ascending: true });
+  const { data, error } = await fetchAllRows<Firm>(
+    (opts) => supabase.from("firms").select("*", opts),
+    {
+      column: "name",
+      ascending: true,
+      compare: (a, b) => a.name.localeCompare(b.name),
+    }
+  );
   if (error) throw error;
   // Same boundary rule as AuthProvider: never hand out an unnormalized style.
-  return (data as Firm[]).map((f) => withSafeStyle(f) as Firm);
+  return data.map((f) => withSafeStyle(f) as Firm);
 }
 
+/** Every user, oldest account first. */
 export async function fetchProfiles(): Promise<Profile[]> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const { data, error } = await fetchAllRows<Profile>(
+    (opts) => supabase.from("profiles").select("*", opts),
+    {
+      column: "created_at",
+      ascending: true,
+      // UTC ISO strings, so string order is time order (see NEWEST_FIRST in
+      // fetchAll.ts for why varying fraction lengths are fine).
+      compare: (a, b) =>
+        a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+    }
+  );
   if (error) throw error;
-  return data as Profile[];
+  return data;
 }
 
 export async function createFirm(name: string): Promise<Firm> {

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { fetchAllRows, NEWEST_FIRST } from "./fetchAll";
 import { offloadItemImages } from "../lib/imageStore";
 import type { Item, Project } from "../types";
 import { sanitizeItem } from "../types";
@@ -65,15 +66,14 @@ function projectToRow(p: Project): Omit<ProjectRow, "firm_id" | "updated_at"> {
   };
 }
 
-/** Load a firm's projects, newest-updated first. */
+/** Load all of a firm's projects, newest-updated first. */
 export async function fetchProjects(firmId: string): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("firm_id", firmId)
-    .order("updated_at", { ascending: false });
+  const { data, error } = await fetchAllRows<ProjectRow>(
+    (opts) => supabase.from("projects").select("*", opts).eq("firm_id", firmId),
+    NEWEST_FIRST
+  );
   if (error) throw error;
-  return (data as ProjectRow[]).map(rowToProject);
+  return data.map(rowToProject);
 }
 
 /** Insert a new project for the given firm. Returns the stored project. */
