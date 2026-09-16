@@ -7,7 +7,7 @@ import TagField from "./TagField";
 
 interface Props {
   item: Item;
-  onSave: (item: Item) => void;
+  onSave: (item: Item) => void | Promise<void>;
   onClose: () => void;
   onDelete?: (id: string) => void;
   /** Save the current draft as a NEW copy (existing items only). */
@@ -65,6 +65,39 @@ export default function ItemEditor({
     setDraft((d) => ({ ...d, retailPrice: value, price: value }));
   }
 
+  // A database or inventory save is an INSERT for a piece that has no row yet,
+  // and the modal stays open until it lands — so a second click on a slow
+  // connection would insert the piece twice. One save at a time.
+  const [saving, setSaving] = useState(false);
+  // Every button that writes shares the flag: "★ Save to database" inserts a
+  // new row too, so a second click on either would create a second piece.
+  async function runOnce(action: () => void | Promise<void>) {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await action();
+    } catch {
+      // The handlers show their own errors; swallow so an onClick can't leave
+      // an unhandled rejection behind.
+    } finally {
+      setSaving(false);
+    }
+  }
+  const handleSave = () => runOnce(() => onSave(draft));
+
+  // The single "Price (each)" field. A database row that came from inventory
+  // still carries a retail price, and `price` is mirrored FROM that one
+  // (`retailPrice ?? price`) — so editing the price here has to move the
+  // retail price with it, or the old number would come back the next time the
+  // piece is read as stock (e.g. copied into the inventory).
+  function setPrice(value: number | null) {
+    setDraft((d) =>
+      typeof d.retailPrice === "number"
+        ? { ...d, price: value, retailPrice: value }
+        : { ...d, price: value }
+    );
+  }
+
   // "" for an unset number field, so the input renders empty rather than "0".
   const numValue = (v: number | null | undefined) =>
     v === null || v === undefined ? "" : v;
@@ -94,8 +127,13 @@ export default function ItemEditor({
       if (typeof fields.price === "number") {
         next.price = fields.price;
         // An extracted price is the vendor's asking price — the retail side of
-        // an inventory entry, not what the firm paid.
-        if (inventoryMode) next.retailPrice = fields.price;
+        // an inventory entry, not what the firm paid. Outside inventory mode a
+        // draft can still carry a retail price (a database piece copied from
+        // stock), and `price` is read back from it, so move that one too or
+        // the extracted price would be undone — same rule as setPrice.
+        if (inventoryMode || typeof next.retailPrice === "number") {
+          next.retailPrice = fields.price;
+        }
       }
       return next;
     });
@@ -245,7 +283,7 @@ export default function ItemEditor({
               <input
                 type="number"
                 value={numValue(draft.price)}
-                onChange={(e) => set("price", toNum(e.target.value))}
+                onChange={(e) => setPrice(toNum(e.target.value))}
               />
             </label>
           )}
@@ -444,7 +482,8 @@ export default function ItemEditor({
           {onSaveToLibrary && (
             <button
               className="btn ghost"
-              onClick={() => onSaveToLibrary(draft)}
+              onClick={() => runOnce(() => onSaveToLibrary(draft))}
+              disabled={saving}
               title="Save this piece to your master database for reuse"
             >
               ★ Save to database
@@ -454,7 +493,7 @@ export default function ItemEditor({
           <button className="btn ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" onClick={() => onSave(draft)}>
+          <button className="btn primary" onClick={handleSave} disabled={saving}>
             {inventoryMode
               ? "Save item"
               : libraryMode

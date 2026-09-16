@@ -103,21 +103,22 @@ export async function setProfileRole(
  * RPC, which at least removes the profile and thereby revokes all access.
  */
 export async function deleteUser(userId: string): Promise<void> {
-  let result: { res: Response; json: unknown } | null = null;
-  try {
-    result = await authedPostJson("/api/delete-user", { userId });
-  } catch {
-    // Network failure / endpoint unreachable — degrade to the RPC below.
-  }
-  if (result) {
-    if (result.res.ok) return;
-    // A real refusal (not-admin, self-delete, server error) must surface;
-    // only "not configured" (501) falls through to the profile-only RPC.
-    if (result.res.status !== 501) {
+  // Endpoint unreachable. Only a deployment without the service key (the 501
+  // below) may fall back to the profile-only RPC: that revokes access but
+  // leaves the login in place, so on a network failure say so rather than
+  // reporting a full deletion that didn't happen.
+  const result = await authedPostJson("/api/delete-user", { userId }).catch(
+    () => {
       throw new Error(
-        apiErrorMessage(result.json, "Deleting the account failed.")
+        "Couldn't reach the server to delete this account. Check your connection and try again."
       );
     }
+  );
+  if (result.res.ok) return;
+  // A real refusal (not-admin, self-delete, server error) must surface;
+  // only "not configured" (501) falls through to the profile-only RPC.
+  if (result.res.status !== 501) {
+    throw new Error(apiErrorMessage(result.json, "Deleting the account failed."));
   }
   const { error } = await supabase.rpc("admin_delete_user", { target: userId });
   if (error) throw error;

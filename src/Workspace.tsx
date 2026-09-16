@@ -26,6 +26,7 @@ import {
   fetchProject,
   fetchProjects,
   ProjectConflictError,
+  ProjectMissingError,
   saveProject,
 } from "./data/projects";
 import {
@@ -71,6 +72,37 @@ interface Props {
 // array don't churn.
 const EMPTY_ITEMS: Item[] = [];
 
+/**
+ * One queued change to a project: which project, how to re-apply it, and
+ * whether the database already has it (so a merge never applies it twice).
+ */
+interface PendingEdit {
+  id: string;
+  mut: (p: Project) => Project;
+  written?: boolean;
+}
+
+/**
+ * Replay queued edits onto the version of a project the server just gave us.
+ *
+ * A save whose reply never arrived may in fact have landed, so an edit can end
+ * up replayed onto a version that already contains it. Items are therefore
+ * de-duplicated by id afterwards, keeping the server's copy: replaying "add
+ * these three pieces" can never add the same three a second time.
+ */
+function replayEdits(project: Project, edits: PendingEdit[]): Project {
+  const replayed = edits.reduce((p, e) => e.mut(p), project);
+  const seen = new Set<string>();
+  const items = replayed.items.filter((it) => {
+    if (seen.has(it.id)) return false;
+    seen.add(it.id);
+    return true;
+  });
+  return items.length === replayed.items.length
+    ? replayed
+    : { ...replayed, items };
+}
+
 /** The authenticated tear-sheet workspace for a single firm. */
 export default function Workspace({
   firm,
@@ -86,6 +118,14 @@ export default function Workspace({
   // Every write to the project list goes through `updateProjects` so the two
   // can never drift apart.
   const projectsRef = useRef<Project[]>([]);
+  // Edits handed to the save queue that haven't been written yet, oldest
+  // first. A save that has to merge with a teammate's version replays these on
+  // top of it, so an edit waiting its turn is never dropped from the screen.
+  const pendingEdits = useRef<PendingEdit[]>([]);
+  // Per-inventory-row quantity writes: the in-flight chain, and the last count
+  // the server confirmed for that row (see setInventoryQuantity).
+  const qtyChain = useRef(new Map<string, Promise<void>>());
+  const qtyConfirmed = useRef(new Map<string, number>());
   const updateProjects = useCallback(
     (updater: (ps: Project[]) => Project[]) => {
       projectsRef.current = updater(projectsRef.current);
@@ -374,14 +414,22 @@ export default function Workspace({
   // rows) get those uploaded to Storage first, and the small public URLs are
   // adopted back into state so the next save doesn't re-upload them.
   const persist = useCallback(
-    async (projectId: string, mut: (p: Project) => Project) => {
+    async (entry: PendingEdit) => {
+      const projectId = entry.id;
       setSaveError(null);
       let merged = false;
       for (let attempt = 0; attempt < 4; attempt++) {
         let target: Project | undefined;
+        // The queued edits this attempt is about to write. They're marked as
+        // written only once the save lands, so a later merge can tell what the
+        // database already has from what still has to be replayed.
+        let included: PendingEdit[];
         if (attempt === 0) {
-          // The change is already in local state; save exactly that.
+          // The change is already in local state; save exactly that. Every
+          // queued edit for this project is in there too (each was applied the
+          // moment the user made it), so this write carries them all.
           target = projectsRef.current.find((p) => p.id === projectId);
+          included = pendingEdits.current.filter((e) => e.id === projectId);
           // Deleted locally while this was queued — nothing left to save.
           if (!target) return;
         } else {
@@ -393,12 +441,36 @@ export default function Workspace({
             return;
           }
           if (fresh === null) {
+            // Nothing to replay onto ever again — let the queue forget these
+            // rather than replaying them onto some other save.
+            for (const e of pendingEdits.current) {
+              if (e.id === projectId) e.written = true;
+            }
             setSaveError(
               "This project is no longer available (it may have been deleted)."
             );
             return;
           }
-          target = mut(fresh);
+          // Replay this change AND every later edit to the same project that
+          // is still waiting its turn in the queue. Those later edits exist
+          // only in local state (they were applied the moment the user made
+          // them) and their own save writes local state verbatim — so if this
+          // merge dropped them from state here, they would be gone from the
+          // screen and then written away in the database too.
+          //
+          // Every queued edit for this project that the database doesn't have
+          // yet is replayed, oldest first — including an earlier one whose own
+          // save failed, which lives only on the user's screen. Edits the
+          // database already has are skipped: replaying an append ("add these 3
+          // pieces") a second time would add the very same items again, ids and
+          // all.
+          const queue = pendingEdits.current;
+          included = queue.filter((e) => e.id === projectId && !e.written);
+          // Our own change leads if the queue somehow no longer lists it.
+          if (!entry.written && !included.includes(entry)) {
+            included = [entry, ...included];
+          }
+          target = replayEdits(fresh, included);
           const replayed = target;
           updateProjects((ps) =>
             ps.map((p) => (p.id === projectId ? replayed : p))
@@ -438,6 +510,8 @@ export default function Workspace({
           const updatedAt = await saveProject(
             changed ? { ...target, items } : target
           );
+          // Safely in the database now: no later merge may replay these.
+          for (const e of included) e.written = true;
           // Hold on to the new version token so the next save is checked
           // against the row we just wrote.
           updateProjects((ps) =>
@@ -451,6 +525,13 @@ export default function Workspace({
           return;
         } catch (e) {
           if (e instanceof ProjectConflictError) continue;
+          if (e instanceof ProjectMissingError) {
+            // The project is gone: there is nothing left to replay these onto,
+            // and leaving them queued would hold every later refresh back.
+            for (const queued of pendingEdits.current) {
+              if (queued.id === projectId) queued.written = true;
+            }
+          }
           setSaveError(
             e instanceof Error ? e.message : "Changes could not be saved."
           );
@@ -467,13 +548,27 @@ export default function Workspace({
   // Saves are queued so that a retry (which re-reads and replays) can never
   // interleave with the next edit's save.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  // Counts edits handed to the queue. A background refresh compares it before
+  // and after its read to tell whether an edit it must not discard arrived in
+  // the meantime — see refreshProjects.
+  const editSeq = useRef(0);
   const enqueueSave = useCallback(
     (projectId: string, mut: (p: Project) => Project) => {
+      editSeq.current += 1;
+      const entry: PendingEdit = { id: projectId, mut };
+      pendingEdits.current = [...pendingEdits.current, entry];
       saveQueue.current = saveQueue.current
         // persist handles its own errors; this guard exists so that even an
         // unexpected throw can't reject the chain and silently stop every
         // later save.
-        .then(() => persist(projectId, mut).catch(() => {}));
+        .then(() => persist(entry).catch(() => {}))
+        .then(() => {
+          // Drop only what actually reached the database. An edit whose save
+          // failed stays queued on purpose: it's still on the user's screen and
+          // nowhere else, so the next save must carry it rather than write the
+          // project back without it.
+          pendingEdits.current = pendingEdits.current.filter((e) => !e.written);
+        });
     },
     [persist]
   );
@@ -497,12 +592,34 @@ export default function Workspace({
     const now = Date.now();
     if (now - lastRefresh.current < 30_000) return;
     lastRefresh.current = now;
+    // Edits made from here on live in local state with their save still queued
+    // BEHIND this refresh. Replacing the list with the server's copy would wipe
+    // them off the screen, and the queued save would then write that same
+    // server copy back — the edit gone from both. Note the count now and drop
+    // the refresh if it moved: staying one cycle stale is harmless, losing
+    // someone's work is not. (An edit queued BEFORE this point is already
+    // saved by the time the read runs, because both share the queue.)
+    const seenEdits = editSeq.current;
     saveQueue.current = saveQueue.current.then(async () => {
       // A background refresh failing isn't worth interrupting the user; the
       // next save surfaces any real connection problem.
       const ps = await fetchProjects(firm.id).catch(() => null);
       if (!ps) return;
-      updateProjects(() => ps);
+      // An edit arrived after this refresh was asked for: its save is queued
+      // behind us and local state is ahead of what we just read, so leave it be.
+      if (editSeq.current !== seenEdits) return;
+      // An edit whose save failed lives only on this screen — the server's copy
+      // doesn't have it. Take the fresh list, then put those edits back on top
+      // rather than either discarding them or refusing to refresh ever again.
+      const unwritten = pendingEdits.current.filter((e) => !e.written);
+      updateProjects(() =>
+        unwritten.length === 0
+          ? ps
+          : ps.map((p) => {
+              const mine = unwritten.filter((e) => e.id === p.id);
+              return mine.length === 0 ? p : replayEdits(p, mine);
+            })
+      );
       // Someone else may have deleted whatever project was open.
       setActiveProjectId((cur) =>
         cur && ps.some((p) => p.id === cur) ? cur : ps[0]?.id ?? null
@@ -594,7 +711,23 @@ export default function Workspace({
     setEditing(null);
   }
 
-  function handleImport(items: Item[], mode: "append" | "replace") {
+  async function handleImport(items: Item[], mode: "append" | "replace") {
+    // Replacing is the one import that DELETES work — including items a
+    // teammate added — and it sits right next to "Add to current items", so
+    // make it say so first. Every other destructive action here asks.
+    const existing = project?.items.length ?? 0;
+    if (mode === "replace" && existing > 0) {
+      const ok = await confirm({
+        title: `Replace all ${existing} item${existing === 1 ? "" : "s"}?`,
+        message:
+          `This removes everything currently in ${project?.name ?? "this project"}` +
+          ` — including anything a teammate has added — and puts the ${items.length} ` +
+          `imported item${items.length === 1 ? "" : "s"} in their place. It can't be undone.`,
+        confirmLabel: "Replace all",
+        danger: true,
+      });
+      if (!ok) return false;
+    }
     applyProjectChange((p) => ({
       ...p,
       items: mode === "replace" ? items : [...p.items, ...items],
@@ -602,6 +735,7 @@ export default function Workspace({
     // The ImportPanel closes itself once this resolves.
     // Imported client items also seed the master library (deduped).
     void mirrorToLibrary(items);
+    return true;
   }
 
   // --- Master library -------------------------------------------------------
@@ -732,7 +866,9 @@ export default function Workspace({
   async function routeImport(items: Item[], mode: "append" | "replace") {
     if (importTarget === "library") await importToLibrary(items);
     else if (importTarget === "inventory") await importToInventory(items);
-    else handleImport(items, mode);
+    // false = the user declined "replace all", so the panel stays open.
+    else return await handleImport(items, mode);
+    return true;
   }
 
   // De-dup key for "is this product already in the library?" checks.
@@ -1013,16 +1149,36 @@ export default function Workspace({
     setInventory((is) =>
       is.map((i) => (i.id === inv.id ? { ...i, quantity: qty } : i))
     );
-    try {
-      await updateInventoryQuantity(inv.id, qty);
-    } catch (e) {
-      setInventory((is) =>
-        is.map((i) => (i.id === inv.id ? { ...i, quantity: inv.quantity } : i))
-      );
-      setInventoryError(
-        e instanceof Error ? e.message : "Could not update the quantity."
-      );
+    // Each write sends an absolute count, so tapping + three times must not
+    // race: the writes are chained per row, and a failure rolls back to the
+    // last count the server confirmed (not the one captured when the button
+    // was clicked, which a later click has already moved past).
+    if (!qtyConfirmed.current.has(inv.id)) {
+      qtyConfirmed.current.set(inv.id, inv.quantity);
     }
+    const chain = (qtyChain.current.get(inv.id) ?? Promise.resolve()).then(
+      async () => {
+        try {
+          const saved = await updateInventoryQuantity(inv.id, qty);
+          qtyConfirmed.current.set(inv.id, saved.quantity);
+          setInventory((is) =>
+            is.map((i) =>
+              i.id === saved.id ? { ...i, quantity: saved.quantity } : i
+            )
+          );
+        } catch (e) {
+          const confirmed = qtyConfirmed.current.get(inv.id) ?? inv.quantity;
+          setInventory((is) =>
+            is.map((i) => (i.id === inv.id ? { ...i, quantity: confirmed } : i))
+          );
+          setInventoryError(
+            e instanceof Error ? e.message : "Could not update the quantity."
+          );
+        }
+      }
+    );
+    qtyChain.current.set(inv.id, chain);
+    await chain;
   }
 
   async function removeInventoryItem(id: string) {
@@ -1099,29 +1255,49 @@ export default function Workspace({
       let next = current;
       let added = 0;
       let increased = 0;
+      // Each piece is its own write, so a failure part-way through leaves the
+      // earlier ones in the database. Stop there, but keep what landed — the
+      // rows exist, and dropping them from the screen would make the next
+      // attempt stock them a second time.
+      let failure: unknown = null;
       for (const li of libItems) {
         const { id: _omit, ...spec } = li;
         void _omit;
         const existing = byKey.get(catalogKey(li));
-        if (existing) {
-          const saved = await updateInventoryQuantity(
-            existing.id,
-            existing.quantity + 1
-          );
-          byKey.set(catalogKey(saved), saved);
-          next = next.map((i) => (i.id === saved.id ? saved : i));
-          increased++;
-        } else {
-          const saved = await createInventoryItem(firm.id, spec, 1);
-          byKey.set(catalogKey(saved), saved);
-          next = [saved, ...next];
-          added++;
+        try {
+          if (existing) {
+            const saved = await updateInventoryQuantity(
+              existing.id,
+              existing.quantity + 1
+            );
+            byKey.set(catalogKey(saved), saved);
+            next = next.map((i) => (i.id === saved.id ? saved : i));
+            increased++;
+          } else {
+            const saved = await createInventoryItem(firm.id, spec, 1);
+            byKey.set(catalogKey(saved), saved);
+            next = [saved, ...next];
+            added++;
+          }
+        } catch (e) {
+          failure = e;
+          break;
         }
       }
       setInventory(next);
       const parts: string[] = [];
       if (added) parts.push(`${added} added`);
       if (increased) parts.push(`${increased} already stocked — quantity increased`);
+      if (failure) {
+        const done = parts.length
+          ? ` ${parts.join("; ")} before it stopped — those are in your inventory now,` +
+            " so adding them again would raise their counts a second time."
+          : "";
+        setSaveError(
+          `Some pieces couldn't be added to your inventory.${done}`
+        );
+        return;
+      }
       flashMsg(`Inventory updated: ${parts.join("; ")}.`);
     } catch (e) {
       setSaveError(
@@ -1345,12 +1521,29 @@ export default function Workspace({
         confirmLabel: "Restore",
       });
       if (!ok) return;
-      // Independent inserts — create them in parallel.
-      const stored = await Promise.all(
+      // Independent inserts — create them in parallel. Settle them all rather
+      // than failing on the first: a project that DID land is already in the
+      // database, so reporting a blanket failure would invite a second restore
+      // that duplicates it.
+      const results = await Promise.allSettled(
         restored.map((p) => dbCreateProject(firm.id, p))
       );
-      updateProjects((ps) => [...stored, ...ps]);
-      setActiveProjectId(stored[0].id);
+      const stored = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : []
+      );
+      if (stored.length) {
+        updateProjects((ps) => [...stored, ...ps]);
+        setActiveProjectId(stored[0].id);
+      }
+      const failed = results.length - stored.length;
+      if (failed) {
+        setSaveError(
+          `${stored.length} of ${results.length} project${
+            results.length === 1 ? "" : "s"
+          } were restored; ${failed} couldn't be. The ${stored.length} that landed` +
+            " are in your list now, so restoring this file again would add them twice."
+        );
+      }
     } catch (e) {
       setSaveError(
         e instanceof Error ? e.message : "Couldn't restore that backup file."
@@ -1369,6 +1562,8 @@ export default function Workspace({
     setSaveError(null);
     try {
       await dbDeleteProject(id);
+      // Nothing left to replay onto a project that no longer exists.
+      pendingEdits.current = pendingEdits.current.filter((e) => e.id !== id);
       updateProjects((ps) => {
         const next = ps.filter((p) => p.id !== id);
         setActiveProjectId(next[0]?.id ?? null);

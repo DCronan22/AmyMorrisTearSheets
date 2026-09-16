@@ -4,7 +4,11 @@ import { parseSpreadsheet, downloadTemplate } from "../spreadsheet";
 import { parsePptx } from "../pptx";
 
 interface Props {
-  onImport: (items: Item[], mode: "append" | "replace") => void | Promise<void>;
+  /** Resolves false when the destination asked the user and they said no. */
+  onImport: (
+    items: Item[],
+    mode: "append" | "replace"
+  ) => boolean | void | Promise<boolean | void>;
   onClose: () => void;
   /** Where the import lands — drives the wording and the action buttons. */
   target?: "client" | "library" | "inventory";
@@ -295,7 +299,12 @@ export default function ImportPanel({
     setSubmitting(true);
     setError(null);
     try {
-      await onImport(pending, mode);
+      // A declined confirmation ("replace all?" → no) must leave the panel and
+      // the parsed files exactly as they are, not throw them away.
+      if ((await onImport(pending, mode)) === false) {
+        setSubmitting(false);
+        return;
+      }
       onClose();
     } catch (e) {
       setError(

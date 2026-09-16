@@ -33,6 +33,14 @@ export class ProjectConflictError extends Error {
   }
 }
 
+/** Thrown when the project being saved no longer exists in the database. */
+export class ProjectMissingError extends Error {
+  constructor() {
+    super("This project is no longer available (it may have been deleted).");
+    this.name = "ProjectMissingError";
+  }
+}
+
 function rowToProject(row: ProjectRow): Project {
   return {
     id: row.id,
@@ -149,7 +157,7 @@ export async function saveProject(p: Project): Promise<string> {
         .maybeSingle();
       if (still) throw new ProjectConflictError();
     }
-    throw new Error("This project is no longer available (it may have been deleted).");
+    throw new ProjectMissingError();
   }
   return (data as { updated_at: string }).updated_at;
 }
