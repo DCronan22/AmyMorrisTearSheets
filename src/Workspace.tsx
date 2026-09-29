@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { CSSProperties } from "react";
 import "./App.css";
 import type { Firm, InventoryItem, Item, LibraryItem, Project } from "./types";
@@ -46,7 +47,17 @@ import {
   deleteInventoryItem,
 } from "./data/inventory";
 import { offloadItemImages } from "./lib/imageStore";
-import { distinct, distinctTags, projectTotal, formatPrice, toggledSet } from "./util";
+import { preloadImages, waitForImages } from "./lib/imageLoad";
+import {
+  distinct,
+  distinctTags,
+  projectTotal,
+  formatPrice,
+  toggledSet,
+  safeImageUrl,
+  safeLogoUrl,
+  PLACEHOLDER_IMG,
+} from "./util";
 import CatalogFilterBar from "./components/CatalogFilterBar";
 import { useCatalogFilter } from "./components/useCatalogFilter";
 import RoomGroupedGallery from "./components/RoomGroupedGallery";
@@ -81,6 +92,11 @@ interface PendingEdit {
   mut: (p: Project) => Project;
   written?: boolean;
 }
+
+/** A print in progress: tear sheets, or inventory detail forms. */
+type PrintJob =
+  | { kind: "sheets"; items: Item[] }
+  | { kind: "forms"; items: InventoryItem[] };
 
 /**
  * Replay queued edits onto the version of a project the server just gave us.
@@ -215,11 +231,12 @@ export default function Workspace({
       return next;
     });
   }
-  // The set of items to render in the print layout (selected subset or all).
-  const [printItems, setPrintItems] = useState<Item[] | undefined>(undefined);
-  // Inventory prints as the firm's inventory detail form, not as tear sheets,
-  // so it has its own print set; whichever is non-null wins the print dialog.
-  const [printForms, setPrintForms] = useState<InventoryItem[] | null>(null);
+  // What's being printed right now: tear sheets, or inventory as the firm's
+  // inventory detail form. The print layouts are only rendered while a job is
+  // set — see runPrint for why they aren't kept mounted.
+  const [printJob, setPrintJob] = useState<PrintJob | null>(null);
+  // True from the Print click until the dialog closes; blocks a second print.
+  const printBusy = useRef(false);
   const restoreInput = useRef<HTMLInputElement>(null);
 
   // The firm's style (or the default look) drives the print/PDF and PowerPoint
@@ -323,24 +340,82 @@ export default function Workspace({
     setSelectedIds(new Set());
   }
 
-  // Set the print subset, print, then reset once printing finishes.
-  function print(items?: Item[]) {
-    // An explicit empty set (e.g. a stale database selection) would open a blank
-    // print dialog; bail. `undefined` still means "print the whole project".
-    if (items && items.length === 0) return;
-    setPrintItems(items);
-    setPrintForms(null);
+  /**
+   * Print a job: fetch its photos a few at a time, render the print layout,
+   * wait for every photo on the pages to settle, then open the dialog.
+   *
+   * The print layouts used to stay mounted (hidden) at all times so their
+   * photos were already loaded when the dialog opened. That made every visit
+   * download every inventory photo — and the open project's — at once, and the
+   * photo server rate-limited the burst (2026-09-21: 143 of 414 refused), which
+   * left those pages printing the "no image" placeholder. Now nothing is
+   * requested until someone prints, and then only at a pace the server accepts.
+   */
+  async function runPrint(job: PrintJob) {
+    // An empty set (e.g. a stale database selection) would open a blank dialog.
+    if (job.items.length === 0 || printBusy.current) return;
+    printBusy.current = true;
+
+    const urls = new Set<string>();
+    const logo = safeLogoUrl(style.logoUrl);
+    if (logo) urls.add(logo);
+    for (const it of job.items) {
+      const u = safeImageUrl(it.imageUrl);
+      if (u !== PLACEHOLDER_IMG) urls.add(u);
+    }
+
+    let failed = 0;
+    // Held until the dialog closes so the photos stay in the page's image cache.
+    let held: HTMLImageElement[] = [];
+    try {
+      if (urls.size > 0) {
+        const total = urls.size;
+        setFlash(`Getting ${total} photo${total === 1 ? "" : "s"} ready to print…`);
+        const result = await preloadImages([...urls], (done) => {
+          if (done % 10 === 0 && done < total) {
+            setFlash(`Getting photos ready to print… ${done} of ${total}`);
+          }
+        });
+        held = result.images;
+        failed = result.failed.length;
+      }
+      flushSync(() => setPrintJob(job));
+      await waitForImages(
+        document.querySelector(job.kind === "sheets" ? ".ts-print-root" : ".ivf-root"),
+        15000
+      );
+      setFlash(null);
+    } catch {
+      // Preparing is best-effort; printing what rendered beats not printing.
+      flushSync(() => setPrintJob(job));
+      setFlash(null);
+    }
+
+    let finished = false;
     const reset = () => {
-      setPrintItems(undefined);
+      if (finished) return;
+      finished = true;
       window.onafterprint = null;
+      setPrintJob(null);
+      held.length = 0;
+      printBusy.current = false;
+      if (failed > 0) {
+        setSaveError(
+          `${failed} photo${failed === 1 ? "" : "s"} couldn't be loaded, so ${
+            failed === 1 ? "it" : "they"
+          } printed as a blank box. Check your connection and print again.`
+        );
+      }
     };
     window.onafterprint = reset;
-    // Defer so the print layout re-renders with the chosen subset first.
-    setTimeout(() => {
-      window.print();
-      // Fallback in case onafterprint never fires (some browsers/dialogs).
-      setTimeout(reset, 1000);
-    }, 0);
+    window.print();
+    // Fallback in case onafterprint never fires (some browsers/dialogs).
+    setTimeout(reset, 1000);
+  }
+
+  // Print tear sheets: the given items, or the whole project.
+  function print(items?: Item[]) {
+    void runPrint({ kind: "sheets", items: items ?? project?.items ?? [] });
   }
 
   /**
@@ -348,19 +423,51 @@ export default function Workspace({
    * Word and PowerPoint inventory exports produce — rather than as tear sheets.
    */
   function printInventoryForms(items: InventoryItem[]) {
-    if (items.length === 0) return;
-    setPrintForms(items);
-    setPrintItems(undefined);
-    const reset = () => {
-      setPrintForms(null);
-      window.onafterprint = null;
-    };
-    window.onafterprint = reset;
-    setTimeout(() => {
-      window.print();
-      setTimeout(reset, 1000);
-    }, 0);
+    void runPrint({ kind: "forms", items });
   }
+
+  // Ctrl/Cmd+P goes through runPrint too (the open project's tear sheets, as
+  // it always printed), so its photos are fetched before the dialog opens.
+  // The browser's own File → Print can't be held back while photos load, so
+  // for that one the project's pages are put in place as the dialog opens;
+  // photos the gallery already showed come straight from the browser cache.
+  const printShortcut = useRef({ key: () => {}, before: () => {}, after: () => {} });
+  useEffect(() => {
+    printShortcut.current = {
+      key: () => print(),
+      before: () => {
+        const items = project?.items ?? [];
+        if (printBusy.current || items.length === 0) return;
+        flushSync(() => setPrintJob({ kind: "sheets", items }));
+      },
+      after: () => {
+        if (!printBusy.current) setPrintJob(null);
+      },
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === "p"
+      ) {
+        e.preventDefault();
+        printShortcut.current.key();
+      }
+    };
+    const onBefore = () => printShortcut.current.before();
+    const onAfter = () => printShortcut.current.after();
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("beforeprint", onBefore);
+    window.addEventListener("afterprint", onAfter);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("beforeprint", onBefore);
+      window.removeEventListener("afterprint", onAfter);
+    };
+  }, []);
 
   // Build and download the PowerPoint tear sheets (same layout as Print/PDF).
   // Image fetching can take a moment, so flash progress + the outcome.
@@ -2115,21 +2222,25 @@ export default function Workspace({
       </div>
 
       {/* Print layouts live outside .no-print and are shown only when
-          printing. Both stay mounted so their photos are already loaded when
-          the dialog opens; data-active picks the one that prints. */}
-      <TearSheetPrint
-        project={project}
-        items={printItems}
-        style={style}
-        firmName={firm.name}
-        active={printForms === null}
-      />
-      <InventoryFormPrint
-        items={printForms ?? inventory}
-        style={style}
-        firmName={firm.name}
-        active={printForms !== null}
-      />
+          printing. Rendered only while a print job is set (see runPrint), so
+          a visit doesn't download every photo they'd show. */}
+      {printJob?.kind === "sheets" && (
+        <TearSheetPrint
+          project={project}
+          items={printJob.items}
+          style={style}
+          firmName={firm.name}
+          active
+        />
+      )}
+      {printJob?.kind === "forms" && (
+        <InventoryFormPrint
+          items={printJob.items}
+          style={style}
+          firmName={firm.name}
+          active
+        />
+      )}
 
       {editing && (
         <ItemEditor

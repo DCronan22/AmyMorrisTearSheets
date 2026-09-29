@@ -1206,9 +1206,9 @@ a.btn {
    Print / PDF layout
    ============================================================ */
 
-/* Hide the print layouts on screen; show only when printing. Both stay
-   mounted so their images are loaded before the print dialog opens, and
-   data-active picks the one that actually prints. */
+/* Hide the print layouts on screen; show only when printing. They are
+   mounted only while a print is in progress (Workspace.runPrint), and
+   data-active marks the one that prints. */
 .ts-print-root,
 .ivf-root {
   display: none;

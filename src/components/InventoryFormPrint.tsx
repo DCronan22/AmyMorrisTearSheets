@@ -30,9 +30,9 @@ const inches = (n: number) => `${n}in`;
  * three position from the same absolute page coordinates, so printing an entry
  * and exporting it give the same page rather than three near-misses.
  *
- * Hidden on screen and revealed only while printing (see App.css). Kept
- * mounted alongside the tear-sheet layout so photos are loaded by the time the
- * print dialog opens; `active` decides which of the two actually prints.
+ * Hidden on screen and revealed only while printing (see App.css). Mounted
+ * only while an inventory print is in progress (Workspace.runPrint fetches the
+ * photos first).
  */
 function InventoryFormPrint({ items, style, firmName, active }: Props) {
   const logo = safeLogoUrl(style.logoUrl);

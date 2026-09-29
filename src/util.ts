@@ -2,6 +2,7 @@ import type { SyntheticEvent } from "react";
 import type { Item } from "./types";
 import { isCalendarDate } from "./types";
 import { parseTags, tagsInclude } from "./lib/tags";
+import { isOwnStorageUrl } from "./lib/imageLoad";
 
 /** Format a price as USD; blank when null. */
 export function formatPrice(p: number | null): string {
@@ -138,9 +139,38 @@ export function toggledSet(prev: Set<string>, id: string): Set<string> {
   return next;
 }
 
-/** Shared <img onError> fallback: swap a broken image for the placeholder. */
+/** Pauses before re-requesting a photo from our storage that failed to load. */
+const IMG_RETRY_DELAYS = [1500, 4000, 9000];
+
+/**
+ * Shared <img onError> fallback: swap a broken image for the placeholder.
+ *
+ * A photo from our own storage usually failed only because the server was
+ * briefly rate-limiting (429), so it is shown as the placeholder and then
+ * requested again a few times with growing pauses before giving up. Anything
+ * else (a vendor hotlink, a bad URL) gets the placeholder straight away.
+ */
 export function onImgError(e: SyntheticEvent<HTMLImageElement>): void {
-  (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
+  const img = e.target as HTMLImageElement;
+  const src = img.src;
+  if (src === PLACEHOLDER_IMG) return;
+  if (!isOwnStorageUrl(src)) {
+    img.src = PLACEHOLDER_IMG;
+    return;
+  }
+  // Retries are counted per URL: React can reuse this <img> for another photo.
+  const tries = img.dataset.retrySrc === src ? Number(img.dataset.retries) || 0 : 0;
+  img.src = PLACEHOLDER_IMG;
+  if (tries >= IMG_RETRY_DELAYS.length) return;
+  img.dataset.retrySrc = src;
+  img.dataset.retries = String(tries + 1);
+  window.setTimeout(() => {
+    // Only if nothing has pointed the <img> elsewhere (a re-render with a
+    // different photo) or removed it in the meantime.
+    if (img.isConnected && img.src === PLACEHOLDER_IMG && img.dataset.retrySrc === src) {
+      img.src = src;
+    }
+  }, IMG_RETRY_DELAYS[tries]);
 }
 
 /**

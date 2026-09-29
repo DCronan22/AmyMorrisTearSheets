@@ -3,6 +3,7 @@ import { PAIRING_FONTS } from "./types";
 import { priceLine, safeLogoUrl } from "./util";
 import { triggerDownload } from "./storage";
 import { layoutSheet } from "./branding/sheetLayout";
+import { IMAGE_CONCURRENCY, fetchWithRetry, mapPool } from "./lib/imageLoad";
 
 // PowerPoint tear-sheet export — one slide per item, replicating the print/PDF
 // layout (TearSheetPrint + the .ts-page rules in App.css) exactly: a 7.5in x
@@ -119,8 +120,8 @@ export async function loadImage(src: string): Promise<EmbeddableImage | null> {
     } else {
       const url = new URL(src, window.location.href);
       if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-      const res = await fetch(url.href, { mode: "cors" });
-      if (!res.ok) return null;
+      const res = await fetchWithRetry(url.href);
+      if (!res || !res.ok) return null;
       const blob = await res.blob();
       if (!blob.type.startsWith("image/")) return null;
       dataUrl = await blobToDataUrl(blob);
@@ -158,24 +159,18 @@ export async function exportItemsToPptx(
   // Loaded on demand so the (large) pptx generator stays out of the main bundle.
   const { default: PptxGenJS } = await import("pptxgenjs");
 
-  // Fetch the logo and every distinct item photo up front, in parallel.
-  const cache = new Map<string, Promise<EmbeddableImage | null>>();
-  const getImage = (u: string) => {
-    let p = cache.get(u);
-    if (!p) {
-      p = loadImage(u);
-      cache.set(u, p);
-    }
-    return p;
-  };
+  // Fetch the logo and every distinct item photo up front — a few at a time,
+  // so a large set doesn't trip the photo server's rate limit (see imageLoad).
   const logoUrl = safeLogoUrl(style.logoUrl);
-  const [logo, ...images] = await Promise.all([
-    logoUrl ? getImage(logoUrl) : Promise.resolve(null),
-    ...items.map((it) => {
-      const u = it.imageUrl.trim();
-      return u ? getImage(u) : Promise.resolve(null);
-    }),
-  ]);
+  const urls = [
+    ...new Set(
+      [logoUrl, ...items.map((it) => it.imageUrl.trim())].filter(Boolean)
+    ),
+  ];
+  const fetched = await mapPool(urls, IMAGE_CONCURRENCY, (u) => loadImage(u));
+  const byUrl = new Map(urls.map((u, i) => [u, fetched[i]]));
+  const logo = logoUrl ? (byUrl.get(logoUrl) ?? null) : null;
+  const images = items.map((it) => byUrl.get(it.imageUrl.trim()) ?? null);
 
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "TEAR_SHEET", width: PAGE_W, height: PAGE_H });

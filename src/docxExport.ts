@@ -2,6 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import type { FirmStyle, InventoryItem } from "./types";
 import { safeLogoUrl } from "./util";
 import { triggerDownload } from "./storage";
+import { IMAGE_CONCURRENCY, fetchWithRetry, mapPool } from "./lib/imageLoad";
 // The form's wording and value formatting are shared with the print/PDF and
 // PowerPoint renderings of the same form, so all three stay identical.
 import { FORM_LABELS, FORM_TITLE, formDate, formPrice, oneLine } from "./inventoryForm";
@@ -245,8 +246,8 @@ async function loadImage(src: string): Promise<EmbeddableImage | null> {
     } else {
       const url = new URL(src, window.location.href);
       if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-      const res = await fetch(url.href, { mode: "cors" });
-      if (!res.ok) return null;
+      const res = await fetchWithRetry(url.href);
+      if (!res || !res.ok) return null;
       const blob = await res.blob();
       if (!blob.type.startsWith("image/")) return null;
       dataUrl = await blobToDataUrl(blob);
@@ -590,24 +591,18 @@ export async function exportInventoryToDocx(
   const footerText = oneLine(style.footerText);
   const accent = toDocxColor(style.accentColor, "907C67");
 
-  // Fetch the logo and every distinct item photo up front, in parallel.
-  const cache = new Map<string, Promise<EmbeddableImage | null>>();
-  const getImage = (u: string) => {
-    let p = cache.get(u);
-    if (!p) {
-      p = loadImage(u);
-      cache.set(u, p);
-    }
-    return p;
-  };
+  // Fetch the logo and every distinct item photo up front — a few at a time,
+  // so a large set doesn't trip the photo server's rate limit (see imageLoad).
   const logoUrl = safeLogoUrl(style.logoUrl);
-  const [logo, ...photos] = await Promise.all([
-    logoUrl ? getImage(logoUrl) : Promise.resolve(null),
-    ...items.map((it) => {
-      const u = it.imageUrl.trim();
-      return u ? getImage(u) : Promise.resolve(null);
-    }),
-  ]);
+  const urls = [
+    ...new Set(
+      [logoUrl, ...items.map((it) => it.imageUrl.trim())].filter(Boolean)
+    ),
+  ];
+  const fetched = await mapPool(urls, IMAGE_CONCURRENCY, (u) => loadImage(u));
+  const byUrl = new Map(urls.map((u, i) => [u, fetched[i]]));
+  const logo = logoUrl ? (byUrl.get(logoUrl) ?? null) : null;
+  const photos = items.map((it) => byUrl.get(it.imageUrl.trim()) ?? null);
 
   const parts: Record<string, Uint8Array> = {};
   const imageExts = new Set<string>();

@@ -26,9 +26,10 @@ interface Props {
  * fields appear (see FirmStyle).
  *
  * Hidden on screen (see App.css) and revealed only while printing, so the
- * browser's "Save as PDF" produces clean tear sheets. Memoized: it stays
- * mounted (so images are loaded before the print dialog opens) and renders a
- * page per item, so it must not re-render on every workspace keystroke.
+ * browser's "Save as PDF" produces clean tear sheets. Mounted only while a
+ * print is in progress (Workspace.runPrint fetches the photos first).
+ * Memoized: it renders a page per item, so it must not re-render on every
+ * workspace keystroke.
  */
 function TearSheetPrint({ project, style, firmName, items, active }: Props) {
   const activeAttr = active ? "1" : "0";
