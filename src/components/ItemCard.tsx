@@ -4,10 +4,10 @@ import type { Item, LibraryItem } from "../types";
 import {
   formatPrice,
   lineTotal,
-  onImgError,
   safeImageUrl,
   safeLinkUrl,
 } from "../util";
+import CardPhoto from "./CardPhoto";
 
 /** Anything with the product display fields — a project Item or a LibraryItem. */
 export type CardItem = Item | LibraryItem;
@@ -74,12 +74,7 @@ function ItemCard({
             />
           </label>
         )}
-        <img
-          src={safeImageUrl(item.imageUrl)}
-          alt={item.name}
-          loading="lazy"
-          onError={onImgError}
-        />
+        <CardPhoto src={safeImageUrl(item.imageUrl)} alt={item.name} />
         {item.category && <span className="card-tag">{item.category}</span>}
       </div>
       <div className="card-body">

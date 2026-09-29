@@ -60,19 +60,19 @@ const MIN_GAP_MS = 40;
 const MAX_GAP_MS = 1000;
 const pacer = { gapMs: MIN_GAP_MS, nextStart: 0 };
 
-async function takeTurn(): Promise<void> {
+export async function takeTurn(): Promise<void> {
   const now = Date.now();
   const at = Math.max(now, pacer.nextStart);
   pacer.nextStart = at + pacer.gapMs;
   if (at > now) await sleep(at - now);
 }
 
-function refused(): void {
+export function refused(): void {
   pacer.gapMs = Math.min(pacer.gapMs * 2, MAX_GAP_MS);
   pacer.nextStart = Math.max(pacer.nextStart, Date.now() + 1000);
 }
 
-function served(): void {
+export function served(): void {
   pacer.gapMs = Math.max(MIN_GAP_MS, pacer.gapMs * 0.9);
 }
 

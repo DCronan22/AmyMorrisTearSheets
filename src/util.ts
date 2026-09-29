@@ -170,7 +170,7 @@ export function onImgError(e: SyntheticEvent<HTMLImageElement>): void {
     if (img.isConnected && img.src === PLACEHOLDER_IMG && img.dataset.retrySrc === src) {
       img.src = src;
     }
-  }, IMG_RETRY_DELAYS[tries]);
+  }, IMG_RETRY_DELAYS[tries] * (0.5 + Math.random()));
 }
 
 /**
