@@ -7,21 +7,11 @@
 // Requires SUPABASE_SERVICE_ROLE_KEY in the server environment (never
 // VITE_-prefixed — the service key must not reach the browser). Without it the
 // endpoint answers 501 and the client falls back to the profile-only RPC.
-import { createClient } from "@supabase/supabase-js";
-import type { SupabaseClient } from "@supabase/supabase-js";
+// NOTE: relative imports MUST include the .js extension (Vercel ESM).
+import { adminClient } from "./supabase-admin.js";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-let admin: SupabaseClient | null = null;
-
-function adminClient(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  admin ??= createClient(url, key, { auth: { persistSession: false } });
-  return admin;
-}
 
 export interface DeleteUserBody {
   userId?: string;
@@ -66,6 +56,24 @@ export async function runDeleteUser(
     return {
       status: 400,
       payload: { error: "You cannot delete your own account." },
+    };
+  }
+
+  // Never let one platform admin remove another through this endpoint — an
+  // admin account must be demoted by hand first. (A target with no profile
+  // row is an orphaned login and may still be cleaned up.)
+  const { data: targetProfile, error: targetErr } = await sb
+    .from("profiles")
+    .select("role")
+    .eq("id", target)
+    .maybeSingle();
+  if (targetErr) {
+    return { status: 500, payload: { error: "Could not verify permissions." } };
+  }
+  if (targetProfile?.role === "platform_admin") {
+    return {
+      status: 403,
+      payload: { error: "Platform admin accounts can't be deleted here." },
     };
   }
 

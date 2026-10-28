@@ -2,7 +2,7 @@ import { supabase } from "../lib/supabase";
 import { fetchAllRows } from "./fetchAll";
 import { authedPostJson, apiErrorMessage } from "../lib/api";
 import type { Firm, Profile, SubscriptionStatus } from "../types";
-import { withSafeStyle } from "../types";
+import { FIRM_COLUMNS, withSafeStyle } from "../types";
 
 // Platform-admin-only data operations. Every call here is also guarded by RLS
 // (is_platform_admin()), so a non-admin calling them would simply get nothing /
@@ -10,7 +10,7 @@ import { withSafeStyle } from "../types";
 
 export async function fetchFirms(): Promise<Firm[]> {
   const { data, error } = await fetchAllRows<Firm>(
-    (opts) => supabase.from("firms").select("*", opts),
+    (opts) => supabase.from("firms").select(FIRM_COLUMNS, opts),
     {
       column: "name",
       ascending: true,
@@ -43,7 +43,7 @@ export async function createFirm(name: string): Promise<Firm> {
   const { data, error } = await supabase
     .from("firms")
     .insert({ name })
-    .select("*")
+    .select(FIRM_COLUMNS)
     .single();
   if (error) throw error;
   return withSafeStyle(data as Firm) as Firm;
@@ -53,7 +53,6 @@ export interface FirmPatch {
   name?: string;
   subscription_status?: SubscriptionStatus;
   renewal_date?: string | null;
-  notes?: string;
 }
 
 export async function updateFirm(id: string, patch: FirmPatch): Promise<Firm> {
@@ -61,10 +60,37 @@ export async function updateFirm(id: string, patch: FirmPatch): Promise<Firm> {
     .from("firms")
     .update(patch)
     .eq("id", id)
-    .select("*")
+    .select(FIRM_COLUMNS)
     .single();
   if (error) throw error;
   return withSafeStyle(data as Firm) as Firm;
+}
+
+/**
+ * Private admin notes per firm, keyed by firm id. Stored in firm_admin_notes,
+ * which RLS restricts to platform admins (members can't read it at all).
+ */
+export async function fetchFirmNotes(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from("firm_admin_notes")
+    .select("firm_id,notes");
+  if (error) throw error;
+  const out: Record<string, string> = {};
+  for (const row of (data ?? []) as { firm_id: string; notes: string }[]) {
+    out[row.firm_id] = row.notes;
+  }
+  return out;
+}
+
+/** Create or replace a firm's private admin note. */
+export async function saveFirmNotes(
+  firmId: string,
+  notes: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("firm_admin_notes")
+    .upsert({ firm_id: firmId, notes }, { onConflict: "firm_id" });
+  if (error) throw error;
 }
 
 export async function deleteFirm(id: string): Promise<void> {

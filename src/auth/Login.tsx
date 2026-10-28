@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthProvider";
+import { authLinkErrorMessage } from "../lib/authErrors";
+import { MIN_NEW_PASSWORD_LENGTH } from "../lib/passwordPolicy";
 
 type Mode = "signin" | "signup" | "reset";
 
@@ -38,6 +40,14 @@ export default function Login() {
         );
         setMode("signin");
       } else if (mode === "signup") {
+        // New accounts only — existing users can still sign in with an older,
+        // shorter password.
+        if (password.length < MIN_NEW_PASSWORD_LENGTH) {
+          setError(
+            `Please choose a password of at least ${MIN_NEW_PASSWORD_LENGTH} characters.`
+          );
+          return;
+        }
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -91,8 +101,10 @@ export default function Login() {
 
         {recoveryError && mode === "signin" && (
           <p className="status-err" role="alert">
-            {recoveryError} Reset links can only be used once and expire quickly
-            — request a fresh one and open it right away.
+            {/* Fixed, app-authored text only: the raw value comes from the URL
+                and is attacker-controlled (phishing via crafted links). */}
+            {authLinkErrorMessage(recoveryError)} Reset links can only be used
+            once and expire quickly, so open the new one right away.
           </p>
         )}
 
@@ -128,7 +140,9 @@ export default function Login() {
                 autoComplete={
                   mode === "signin" ? "current-password" : "new-password"
                 }
-                minLength={6}
+                minLength={
+                  mode === "signup" ? MIN_NEW_PASSWORD_LENGTH : undefined
+                }
                 required
               />
             </label>

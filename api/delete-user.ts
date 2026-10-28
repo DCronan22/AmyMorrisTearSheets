@@ -6,7 +6,10 @@ import { runDeleteUser } from "./_lib/delete-user-run.js";
 import type { DeleteUserBody } from "./_lib/delete-user-run.js";
 
 export default makeHandler<DeleteUserBody>({
+  endpoint: "delete-user",
+  fields: {
+    userId: { type: "string", maxLength: 64 },
+  },
   run: runDeleteUser,
-  maxPerWindow: 10,
   failMessage: "Deleting the account failed.",
 });

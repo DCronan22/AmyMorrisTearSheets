@@ -405,16 +405,21 @@ export function withSafeStyle(firm: Firm | null): Firm | null {
   };
 }
 
-/** A subscribing design company (tenant). */
+/** A subscribing design company (tenant). Private admin notes live in the
+ *  platform-admin-only `firm_admin_notes` table, not on this row. */
 export interface Firm {
   id: string;
   name: string;
   subscription_status: SubscriptionStatus;
   renewal_date: string | null;
-  notes: string;
   style: FirmStyle | null;
   created_at: string;
 }
+
+/** The `firms` columns the app reads — select these instead of `*` so new
+ *  (e.g. billing/admin-only) columns never leak into the client by default. */
+export const FIRM_COLUMNS =
+  "id,name,subscription_status,renewal_date,style,created_at";
 
 /** An app user, linked to a firm. */
 export interface Profile {

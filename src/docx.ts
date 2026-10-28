@@ -1,4 +1,8 @@
-import { unzipSync } from "fflate";
+import {
+  ArchiveTooLargeError,
+  RASTER_IMAGE,
+  unzipLimited,
+} from "./lib/safeUnzip";
 import type { Item } from "./types";
 import { emptyItem, isCalendarDate, syncStockPricing } from "./types";
 import { compressImageFile } from "./lib/extract";
@@ -19,8 +23,12 @@ export async function parseDocx(file: File): Promise<ImportResult> {
   let files: Record<string, Uint8Array>;
   try {
     const buf = new Uint8Array(await file.arrayBuffer());
-    files = unzipSync(buf);
-  } catch {
+    // Only the parts this importer reads (body + its rels, raster images),
+    // under a total uncompressed-size cap — see lib/safeUnzip.
+    files = unzipLimited(buf, wantedDocxPart);
+  } catch (err) {
+    // Too big to expand safely: let the import panel tell the user so.
+    if (err instanceof ArchiveTooLargeError) throw err;
     // Not a readable ZIP / .docx (corrupt, truncated, or wrong file type):
     // there's nothing to import, so return empty rather than throwing.
     return { items: [], matchedColumns: [], skippedRows: 0 };
@@ -409,6 +417,17 @@ function imageRels(files: Record<string, Uint8Array>): Map<string, string> {
     idToTarget.set(id, resolveRel(files, target));
   }
   return idToTarget;
+}
+
+/** Zip entries parseDocx actually reads; everything else is never inflated.
+ *  Image targets may resolve outside `word/` (package-absolute paths), so any
+ *  raster entry is allowed — each still counts against the size cap. */
+function wantedDocxPart(name: string): boolean {
+  return (
+    name === "word/document.xml" ||
+    name === "word/_rels/document.xml.rels" ||
+    RASTER_IMAGE.test(name)
+  );
 }
 
 /** Resolve a relationship target (relative to `word/`) to its zip path. */

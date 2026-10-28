@@ -88,7 +88,10 @@ function blocksToFields(message: Anthropic.Message): ExtractedFields {
 const SYSTEM_BLOCKS = systemBlocks(SYSTEM_PROMPT);
 
 /** Extract fields from raw product-page text (fallback path). */
-export async function aiExtractFromText(text: string): Promise<ExtractedFields> {
+export async function aiExtractFromText(
+  text: string,
+  options?: Anthropic.RequestOptions
+): Promise<ExtractedFields> {
   const trimmed = text.slice(0, MAX_TEXT_CHARS);
   const message = await getClient().messages.create({
     model: MODEL,
@@ -102,7 +105,7 @@ export async function aiExtractFromText(text: string): Promise<ExtractedFields> 
         content: `Extract the product details from this page text:\n\n${trimmed}`,
       },
     ],
-  });
+  }, options);
   return blocksToFields(message);
 }
 

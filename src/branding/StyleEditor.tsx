@@ -1,6 +1,11 @@
 import { useRef, useState } from "react";
 import type { Firm, FirmStyle, SheetStyle } from "../types";
-import { FONT_STACKS, defaultFirmStyle, defaultSheet } from "../types";
+import {
+  FONT_STACKS,
+  defaultFirmStyle,
+  defaultSheet,
+  normalizeFirmStyle,
+} from "../types";
 import { saveFirmStyle } from "../data/firmStyle";
 import { compressImageFile, compressLogoFile } from "../lib/extract";
 import { detectStyleFromSample } from "../lib/styleDetect";
@@ -17,6 +22,40 @@ interface Props {
   onSaved: (firm: Firm) => void;
   /** First-run only: dismiss without configuring. */
   onSkip?: () => void;
+}
+
+/**
+ * Merge an AI-detected style over the current draft. The detection response is
+ * untrusted (model output relayed by our API), so each field is run through
+ * normalizeFirmStyle and only kept if it survives unchanged — anything invalid
+ * leaves the draft's own value in place instead of resetting it to a default.
+ * The logo is never taken from detection.
+ */
+function mergeDetectedStyle(
+  draft: FirmStyle,
+  detected: unknown
+): { style: FirmStyle; applied: number } {
+  if (!detected || typeof detected !== "object" || Array.isArray(detected)) {
+    return { style: draft, applied: 0 };
+  }
+  const next: Record<string, unknown> = { ...draft };
+  let applied = 0;
+  for (const [key, value] of Object.entries(detected)) {
+    if (key === "logoUrl" || !Object.prototype.hasOwnProperty.call(draft, key)) {
+      continue;
+    }
+    const k = key as keyof FirmStyle;
+    const normalized = normalizeFirmStyle({ ...draft, [k]: value })[k];
+    const ok =
+      k === "sheet"
+        ? value === null || (typeof value === "object" && !Array.isArray(value))
+        : normalized === (typeof value === "string" ? value.trim() : value);
+    if (!ok) continue;
+    next[k] = normalized;
+    applied++;
+  }
+  // Final pass over the whole object so the draft is always well-formed.
+  return { style: normalizeFirmStyle(next), applied };
 }
 
 const FONT_OPTIONS = Object.entries(FONT_STACKS).map(([value, v]) => ({
@@ -83,9 +122,10 @@ export default function StyleEditor({
         );
         return;
       }
-      // Merge only the fields the AI actually returned, over the current draft.
-      setDraft((d) => ({ ...d, ...result.style }));
-      const hits = Object.keys(result.style).length;
+      // Merge only the fields the AI actually returned (and that pass
+      // validation), over the current draft.
+      setDraft((d) => mergeDetectedStyle(d, result.style).style);
+      const hits = mergeDetectedStyle(draft, result.style).applied;
       setDetectMsg(
         hits
           ? `Applied ${hits} detected setting${hits === 1 ? "" : "s"} — review and tweak below.`

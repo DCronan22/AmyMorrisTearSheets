@@ -5,6 +5,7 @@ import { extractFromUrl, htmlToReadableText } from "./extract-core.js";
 import type { ExtractedFields, ExtractResult } from "./extract-core.js";
 import { aiExtractFromImage, aiExtractFromText } from "./ai-extract.js";
 import { aiAvailable, parseImageDataUrl } from "./anthropic.js";
+import { UserFacingError } from "./errors.js";
 
 export interface ExtractRequest {
   url?: string;
@@ -105,7 +106,15 @@ export async function runExtraction(
     try {
       ({ result, html, finalUrl } = await extractFromUrl(body.url));
     } catch (e) {
-      return { status: 400, payload: { error: e instanceof Error ? e.message : "Couldn't read that link." } };
+      // Only messages we authored reach the client. Network/DNS/guard errors
+      // all collapse to one generic message so the fetcher can't be used to
+      // tell blocked, unreachable and refused hosts apart.
+      return {
+        status: 400,
+        payload: {
+          error: e instanceof UserFacingError ? e.message : "Couldn't read that link.",
+        },
+      };
     }
     // After free structured extraction, optionally have the AI fill blanks
     // when several key fields are still missing. The structured value always
@@ -117,7 +126,11 @@ export async function runExtraction(
       aiAvailable()
     ) {
       try {
-        const aiFields = await aiExtractFromText(htmlToReadableText(html));
+        // The page fetch may already have used up to 10s of the function's
+        // 30s budget, so the fallback gets a single attempt, no retry.
+        const aiFields = await aiExtractFromText(htmlToReadableText(html), {
+          maxRetries: 0,
+        });
         const merged = fillBlanks(result.fields, aiFields);
         merged.productUrl = result.fields.productUrl ?? finalUrl;
         const warnings = hasData(merged)

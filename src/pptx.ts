@@ -1,4 +1,8 @@
-import { unzipSync } from "fflate";
+import {
+  ArchiveTooLargeError,
+  RASTER_IMAGE,
+  unzipLimited,
+} from "./lib/safeUnzip";
 import type { Item } from "./types";
 import { emptyItem } from "./types";
 import { compressImageFile } from "./lib/extract";
@@ -17,8 +21,12 @@ export async function parsePptx(file: File): Promise<ImportResult> {
   let files: Record<string, Uint8Array>;
   try {
     const buf = new Uint8Array(await file.arrayBuffer());
-    files = unzipSync(buf);
-  } catch {
+    // Only the parts this importer reads (slide XML + rels, raster images),
+    // under a total uncompressed-size cap — see lib/safeUnzip.
+    files = unzipLimited(buf, wantedPptxPart);
+  } catch (err) {
+    // Too big to expand safely: let the import panel tell the user so.
+    if (err instanceof ArchiveTooLargeError) throw err;
     // Not a readable ZIP / .pptx (corrupt, truncated, or wrong file type):
     // there's nothing to import, so return empty rather than throwing.
     return { items: [], matchedColumns: [], skippedRows: 0 };
@@ -348,6 +356,15 @@ function imageSize(bytes: Uint8Array): { w: number; h: number } | null {
     // Malformed header — fall through to "unknown".
   }
   return null;
+}
+
+/** Zip entries parsePptx actually reads; everything else is never inflated. */
+function wantedPptxPart(name: string): boolean {
+  return (
+    /^ppt\/slides\/slide\d+\.xml$/.test(name) ||
+    /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(name) ||
+    (name.startsWith("ppt/") && RASTER_IMAGE.test(name))
+  );
 }
 
 function resolveRel(target: string): string {

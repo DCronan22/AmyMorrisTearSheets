@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { MIN_NEW_PASSWORD_LENGTH } from "../lib/passwordPolicy";
 
 interface Props {
   /** Finish recovery and continue into the app (the recovery link signed the
@@ -22,8 +23,10 @@ export default function UpdatePassword({ onDone }: Props) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) {
-      setError("Please choose a password of at least 6 characters.");
+    if (password.length < MIN_NEW_PASSWORD_LENGTH) {
+      setError(
+        `Please choose a password of at least ${MIN_NEW_PASSWORD_LENGTH} characters.`
+      );
       return;
     }
     if (password !== confirm) {
@@ -79,7 +82,7 @@ export default function UpdatePassword({ onDone }: Props) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                minLength={6}
+                minLength={MIN_NEW_PASSWORD_LENGTH}
                 required
                 autoFocus
               />
@@ -91,7 +94,7 @@ export default function UpdatePassword({ onDone }: Props) {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
-                minLength={6}
+                minLength={MIN_NEW_PASSWORD_LENGTH}
                 required
               />
             </label>

@@ -10,7 +10,7 @@ import {
 import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { withSafeStyle } from "../types";
+import { FIRM_COLUMNS, withSafeStyle } from "../types";
 import type { Firm, Profile } from "../types";
 
 interface AuthState {
@@ -57,11 +57,9 @@ const initialAuthUrl = (() => {
     "";
   const params = new URLSearchParams(raw);
   const recovering = params.get("type") === "recovery";
-  const errCode = params.get("error_code") || params.get("error");
-  const error = errCode
-    ? params.get("error_description")?.trim() ||
-      "Your reset link is invalid or has expired. Please request a new one."
-    : null;
+  // Only the code is kept: error_description is attacker-controlled text, and
+  // Login maps the code to a fixed message (see lib/authErrors.ts).
+  const error = params.get("error_code") || params.get("error") || null;
   return { recovering, error };
 })();
 
@@ -111,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (profileRow?.firm_id) {
       const { data: firmRow, error: firmErr } = await supabase
         .from("firms")
-        .select("*")
+        .select(FIRM_COLUMNS)
         .eq("id", profileRow.firm_id)
         .maybeSingle();
       if (firmErr) {

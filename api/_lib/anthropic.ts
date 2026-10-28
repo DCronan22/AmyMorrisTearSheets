@@ -9,7 +9,9 @@ let client: Anthropic | null = null;
 export function getClient(): Anthropic {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("AI is not configured on the server.");
-  client ??= new Anthropic({ apiKey: key });
+  // Keep worst case (timeout × (1 + retries)) inside vercel.json's maxDuration
+  // (30s) — the SDK default is a 10-minute timeout with 2 retries.
+  client ??= new Anthropic({ apiKey: key, timeout: 11_000, maxRetries: 1 });
   return client;
 }
 

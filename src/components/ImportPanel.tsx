@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Item } from "../types";
 import { parseSpreadsheet, downloadTemplate } from "../spreadsheet";
 import { parsePptx } from "../pptx";
+import { ArchiveTooLargeError, MAX_UNZIPPED_BYTES } from "../lib/safeUnzip";
 
 interface Props {
   /** Resolves false when the destination asked the user and they said no. */
@@ -24,6 +25,14 @@ const ACCEPT = ".xlsx,.xls,.csv,.pptx,.pdf,.docx";
 // well under this; it's really just here to stop someone dropping a giant file
 // (e.g. a 500 MB video) and freezing the tab while the browser tries to parse it.
 const MAX_BYTES = 150 * 1024 * 1024;
+// PowerPoint / Word files keep the same per-file cap as before; what actually
+// bounds memory is the uncompressed-size cap in lib/safeUnzip.
+const MAX_ZIP_DOC_BYTES = MAX_BYTES;
+const MB = 1024 * 1024;
+
+function maxBytesFor(name: string): number {
+  return /\.(pptx|docx)$/i.test(name) ? MAX_ZIP_DOC_BYTES : MAX_BYTES;
+}
 // Upper bound on how many files one folder import will parse in a single pass,
 // so a stray huge directory can't lock up the tab. Import sub-folders instead.
 const MAX_FILES = 2000;
@@ -101,8 +110,8 @@ export default function ImportPanel({
     const supported = files.filter((f) => SUPPORTED.test(f.name));
     const unsupported = files.length - supported.length;
     const nonEmpty = supported.filter((f) => f.size > 0);
-    const tooBig = nonEmpty.filter((f) => f.size > MAX_BYTES);
-    const usable = nonEmpty.filter((f) => f.size <= MAX_BYTES);
+    const tooBig = nonEmpty.filter((f) => f.size > maxBytesFor(f.name));
+    const usable = nonEmpty.filter((f) => f.size <= maxBytesFor(f.name));
 
     if (usable.length === 0) {
       setBusy(false);
@@ -112,9 +121,11 @@ export default function ImportPanel({
         );
       } else if (tooBig.length > 0) {
         setError(
-          `Every file was over ${Math.round(
-            MAX_BYTES / (1024 * 1024)
-          )} MB and was skipped. Try exporting slimmer decks.`
+          `Every file was over the size limit (${Math.round(
+            MAX_ZIP_DOC_BYTES / MB
+          )} MB for PowerPoint/Word, ${Math.round(
+            MAX_BYTES / MB
+          )} MB for other files) and was skipped. Try exporting slimmer decks, or split the deck into smaller files.`
         );
       } else {
         setError("Those files were all empty — there’s nothing to import.");
@@ -136,6 +147,7 @@ export default function ImportPanel({
     const matchedSet = new Set<string>();
     let slidesSkipped = 0;
     let filesFailed = 0;
+    let filesTooLarge = 0;
 
     for (let i = 0; i < usable.length; i++) {
       const file = usable[i];
@@ -166,15 +178,28 @@ export default function ImportPanel({
         for (const it of result.items) allItems.push(it);
         for (const c of result.matchedColumns) matchedSet.add(c);
         slidesSkipped += result.skippedRows;
-      } catch {
+      } catch (err) {
         // One malformed file shouldn't sink the whole folder — count it and go on.
-        filesFailed++;
+        if (err instanceof ArchiveTooLargeError) filesTooLarge++;
+        else filesFailed++;
       }
     }
     setBusy(false);
 
     if (allItems.length === 0) {
       setStatus(null);
+      if (filesTooLarge > 0 && filesTooLarge + filesFailed === usable.length) {
+        setError(
+          `${
+            filesTooLarge === 1 && !many
+              ? "That file"
+              : `${filesTooLarge} file${filesTooLarge === 1 ? "" : "s"}`
+          } would expand to more than ${Math.round(
+            MAX_UNZIPPED_BYTES / MB
+          )} MB once unzipped, which is more than we can safely import in the browser. Try splitting the deck or compressing its pictures (in PowerPoint/Word: File › Compress Pictures).`
+        );
+        return;
+      }
       setError(
         many
           ? `We read ${usable.length} files but couldn’t pull any items out. For PowerPoint or PDF, each slide/page should have the product name, dimensions, price, and lead time; a Word form should have its “Item Description:” line filled in.`
@@ -202,6 +227,12 @@ export default function ImportPanel({
     if (filesFailed)
       skips.push(
         `${filesFailed} file${filesFailed === 1 ? "" : "s"} couldn’t be read`
+      );
+    if (filesTooLarge)
+      skips.push(
+        `${filesTooLarge} file${
+          filesTooLarge === 1 ? "" : "s"
+        } too large to unzip safely`
       );
     if (tooBig.length)
       skips.push(
