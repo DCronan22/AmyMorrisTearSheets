@@ -1215,7 +1215,11 @@ a.btn {
 }
 
 @media print {
-  .no-print {
+  /* Pop-ups (style setup, item editor, confirms…) and the slideshow sit
+     outside .app, so without this an open one prints over every sheet. */
+  .no-print,
+  .modal-backdrop,
+  .show {
     display: none !important;
   }
   body {
