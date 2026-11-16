@@ -48,6 +48,41 @@ function apiDevPlugin(opts: {
   }
 }
 
+// POST /api/stripe-webhook under `npm run dev` (for `stripe listen`). Stripe
+// signs the raw bytes, so the body is passed through untouched, no auth.
+function stripeWebhookDevPlugin(): Plugin {
+  return {
+    name: 'api-stripe-webhook-dev',
+    configureServer(server) {
+      server.middlewares.use(
+        '/api/stripe-webhook',
+        async (req: IncomingMessage, res: ServerResponse) => {
+          if (req.method !== 'POST') {
+            res.statusCode = 405
+            return res.end('method not allowed')
+          }
+          try {
+            const { handleWebhook } = await server.ssrLoadModule('/api/_lib/billing.ts')
+            const chunks: Buffer[] = []
+            for await (const c of req) chunks.push(c as Buffer)
+            const sig = req.headers['stripe-signature']
+            const { status, body } = await handleWebhook(
+              Buffer.concat(chunks).toString('utf8'),
+              typeof sig === 'string' ? sig : null
+            )
+            res.statusCode = status
+            res.end(body)
+          } catch (e) {
+            console.error('stripe webhook failed:', e)
+            res.statusCode = 500
+            res.end('error')
+          }
+        }
+      )
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Expose .env values to the server-side dev middleware (auth + Anthropic key).
@@ -57,6 +92,13 @@ export default defineConfig(({ mode }) => {
     'VITE_SUPABASE_ANON_KEY',
     'ANTHROPIC_API_KEY',
     'SUPABASE_SERVICE_ROLE_KEY',
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_PRICE_SMALL',
+    'STRIPE_PRICE_MID',
+    'STRIPE_PRICE_LARGE',
+    'STRIPE_PRICE_SETUP',
+    'APP_URL',
   ]) {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
@@ -87,6 +129,21 @@ export default defineConfig(({ mode }) => {
         exportName: 'runDeleteUser',
         failMessage: 'Deleting the account failed.',
       }),
+      apiDevPlugin({
+        name: 'api-billing-checkout-dev',
+        route: '/api/billing-checkout',
+        modulePath: '/api/_lib/billing.ts',
+        exportName: 'runCheckout',
+        failMessage: "Couldn't start checkout.",
+      }),
+      apiDevPlugin({
+        name: 'api-billing-portal-dev',
+        route: '/api/billing-portal',
+        modulePath: '/api/_lib/billing.ts',
+        exportName: 'runPortal',
+        failMessage: "Couldn't open billing.",
+      }),
+      stripeWebhookDevPlugin(),
     ],
   }
 })

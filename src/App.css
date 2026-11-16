@@ -1704,6 +1704,179 @@ a.btn {
   color: var(--danger);
 }
 
+/* Billing cell: status badge, billing email, payment-link buttons stacked. */
+.admin-billing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.admin-billing > .admin-inline {
+  margin-left: 0;
+  width: 100%;
+  min-width: 180px;
+}
+
+.admin-billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* New-firm request form (NoFirm gate). Textareas match .auth-form inputs. */
+.request-form {
+  margin-bottom: 14px;
+}
+
+.request-form textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+
+.request-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.request-form .muted.small {
+  margin: -6px 0 0;
+}
+
+/* Sign-up: the three plans, current size highlighted. */
+.pricing-tiers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pricing-tiers li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pricing-tiers li.is-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.pricing-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pricing-seats {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.pricing-price {
+  margin-top: 4px;
+  font-family: var(--serif);
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.pricing-per {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.pricing-tag {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .pricing-tiers {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* Admin: pending firm requests + per-firm tier picker. */
+.admin-requests {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-request {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.admin-request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+}
+
+.admin-request-emails {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.admin-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-tier {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-tier .admin-inline {
+  margin-left: 0;
+}
+
+.tier-warn {
+  color: var(--danger);
+}
+
 /* --- Auto-fill (paste-a-link) bar in the item editor ----------- */
 .autofill-bar {
   margin: 4px 0 18px;

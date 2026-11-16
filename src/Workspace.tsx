@@ -17,6 +17,7 @@ import {
 import { INVENTORY_ENABLED } from "./features";
 import { useAuth } from "./auth/AuthProvider";
 import { useConfirm } from "./components/ConfirmProvider";
+import { isBillingContact, portalUrl } from "./data/billing";
 import StyleEditor from "./branding/StyleEditor";
 import { exportProjectFile, parseBackupFile } from "./storage";
 import { exportItemsToSpreadsheet } from "./spreadsheet";
@@ -219,6 +220,19 @@ export default function Workspace({
 
   const { applyFirm } = useAuth();
   const confirm = useConfirm();
+
+  /** Billing contact → Stripe's portal (card, invoices, plan, cancel). */
+  const openBilling = useCallback(async () => {
+    try {
+      window.location.href = await portalUrl();
+    } catch (e) {
+      await confirm({
+        title: "Couldn't open billing",
+        message: e instanceof Error ? e.message : "Please try again.",
+        confirmLabel: "OK",
+      });
+    }
+  }, [confirm]);
   // Whether product cards show the vendor line. Visual only — the vendor data is
   // untouched; persisted per firm so the choice sticks across reloads.
   const [showVendor, setShowVendor] = useState(
@@ -1864,6 +1878,10 @@ export default function Workspace({
                   {isPlatformAdmin && (
                     <button onClick={onOpenAdmin}>Platform admin…</button>
                   )}
+                  {firm.billing_mode === "stripe" &&
+                    isBillingContact(firm, userEmail) && (
+                      <button onClick={openBilling}>Manage billing…</button>
+                    )}
                   <button onClick={onSignOut}>Sign out ({userEmail})</button>
                 </div>
               </div>

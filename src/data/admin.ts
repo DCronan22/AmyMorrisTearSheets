@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { fetchAllRows } from "./fetchAll";
 import { authedPostJson, apiErrorMessage } from "../lib/api";
-import type { Firm, Profile, SubscriptionStatus } from "../types";
+import type { Firm, Profile, SubscriptionStatus, Tier } from "../types";
 import { FIRM_COLUMNS, withSafeStyle } from "../types";
 
 // Platform-admin-only data operations. Every call here is also guarded by RLS
@@ -53,6 +53,8 @@ export interface FirmPatch {
   name?: string;
   subscription_status?: SubscriptionStatus;
   renewal_date?: string | null;
+  billing_email?: string;
+  tier?: Tier | null;
 }
 
 export async function updateFirm(id: string, patch: FirmPatch): Promise<Firm> {
@@ -98,15 +100,26 @@ export async function deleteFirm(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Move a user to a firm (or unassign them). Also drops their email from any
+ * OTHER firm's approved-sign-up list (migration 0012), so a removed person
+ * isn't re-attached to their old firm and can be approved for a new one.
+ */
 export async function setProfileFirm(
-  profileId: string,
+  profile: Pick<Profile, "id" | "email">,
   firmId: string | null
 ): Promise<void> {
   const { error } = await supabase
     .from("profiles")
     .update({ firm_id: firmId })
-    .eq("id", profileId);
+    .eq("id", profile.id);
   if (error) throw error;
+  const email = profile.email.trim().toLowerCase();
+  if (!email) return;
+  let stale = supabase.from("firm_approved_emails").delete().eq("email", email);
+  if (firmId) stale = stale.neq("firm_id", firmId);
+  const { error: listErr } = await stale;
+  if (listErr) throw listErr;
 }
 
 export async function setProfileRole(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../components/ConfirmProvider";
-import type { Firm, Profile, SubscriptionStatus } from "../types";
+import type { Firm, Profile, SubscriptionStatus, Tier } from "../types";
 import {
   createFirm,
   deleteFirm,
@@ -11,6 +11,21 @@ import {
   setProfileRole,
   updateFirm,
 } from "../data/admin";
+import { checkoutUrl, portalUrl } from "../data/billing";
+import {
+  approveFirmRequest,
+  declineFirmRequest,
+  fetchPendingRequests,
+} from "../data/requests";
+import type { FirmRequest } from "../data/requests";
+import {
+  TIERS,
+  TIER_LABEL,
+  isTier,
+  tierDescription,
+  tierFit,
+  tierForSeats,
+} from "../lib/tiers";
 
 const STATUSES: SubscriptionStatus[] = [
   "active",
@@ -36,13 +51,22 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
   const [addingFirm, setAddingFirm] = useState(false);
   const [addHint, setAddHint] = useState<string | null>(null);
   const firmNameInput = useRef<HTMLInputElement>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [requests, setRequests] = useState<FirmRequest[]>([]);
+  // Tier chosen per pending request (defaults to the size its emails suggest).
+  const [requestTier, setRequestTier] = useState<Record<string, Tier>>({});
 
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const [f, p] = await Promise.all([fetchFirms(), fetchProfiles()]);
+      const [f, p, r] = await Promise.all([
+        fetchFirms(),
+        fetchProfiles(),
+        fetchPendingRequests(),
+      ]);
       setFirms(f);
       setProfiles(p);
+      setRequests(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load admin data.");
     } finally {
@@ -75,6 +99,39 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
     }
   }
 
+  /** Make a Checkout link for a firm and put it on the clipboard to send. */
+  async function copyPayLink(f: Firm) {
+    setError(null);
+    setNotice(null);
+    if (!f.billing_email) {
+      setError(`Add a billing email for ${f.name} first — Stripe sends receipts there.`);
+      return;
+    }
+    if (!isTier(f.tier)) {
+      setError(`Pick a plan size for ${f.name} first — it sets the price.`);
+      return;
+    }
+    try {
+      const url = await checkoutUrl(f.id);
+      await navigator.clipboard.writeText(url);
+      setNotice(
+        `${TIER_LABEL[f.tier]}-tier payment link for ${f.name} copied — paste it into an email. It expires in 24 hours.`
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't make a payment link.");
+    }
+  }
+
+  async function openPortal(f: Firm) {
+    setError(null);
+    setNotice(null);
+    try {
+      window.open(await portalUrl(f.id), "_blank", "noopener");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't open billing.");
+    }
+  }
+
   return (
     <div className="admin">
       <header className="admin-head">
@@ -95,10 +152,77 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
       </header>
 
       {error && <p className="status-err">{error}</p>}
+      {notice && <p className="status-ok">{notice}</p>}
       {loading ? (
         <p className="muted">Loading…</p>
       ) : (
         <>
+          {requests.length > 0 && (
+            <section className="admin-section">
+              <h2>Firm requests ({requests.length})</h2>
+              <div className="admin-requests">
+                {requests.map((r) => {
+                  const tier = requestTier[r.id] ?? tierForSeats(r.member_emails.length);
+                  return (
+                    <div className="admin-request" key={r.id}>
+                      <div className="admin-request-head">
+                        <strong>{r.firm_name}</strong>
+                        <span className="muted small">
+                          from {r.requester_email} ·{" "}
+                          {new Date(r.created_at).toLocaleDateString()} ·{" "}
+                          {r.member_emails.length}{" "}
+                          {r.member_emails.length === 1 ? "account" : "accounts"}
+                        </span>
+                      </div>
+                      <div className="admin-request-emails">
+                        {r.member_emails.join(", ")}
+                      </div>
+                      {r.message && <p className="small">“{r.message}”</p>}
+                      <div className="admin-request-actions">
+                        <select
+                          className="admin-inline"
+                          aria-label={`Plan size for ${r.firm_name}`}
+                          value={tier}
+                          onChange={(e) =>
+                            setRequestTier((m) => ({ ...m, [r.id]: e.target.value as Tier }))
+                          }
+                        >
+                          {TIERS.map((t) => (
+                            <option key={t} value={t}>
+                              {tierDescription(t)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn primary small"
+                          onClick={() => guard(() => approveFirmRequest(r.id, tier))}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn ghost small danger"
+                          onClick={async () => {
+                            if (
+                              await confirm({
+                                title: "Decline request?",
+                                message: `Decline ${r.firm_name}'s request? ${r.requester_email} will see that it wasn't approved.`,
+                                confirmLabel: "Decline",
+                                danger: true,
+                              })
+                            )
+                              guard(() => declineFirmRequest(r.id));
+                          }}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <section className="admin-section">
             <div className="admin-section-head">
               <h2>Firms ({firms.length})</h2>
@@ -154,6 +278,7 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                     <th>Firm</th>
                     <th>Access</th>
                     <th>Renewal date</th>
+                    <th>Billing</th>
                     <th>Members</th>
                     <th></th>
                   </tr>
@@ -181,14 +306,21 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                         <select
                           className="admin-inline"
                           value={f.subscription_status}
-                          onChange={(e) =>
-                            guard(() =>
-                              updateFirm(f.id, {
-                                subscription_status: e.target
-                                  .value as SubscriptionStatus,
-                              })
+                          onChange={async (e) => {
+                            const next = e.target.value as SubscriptionStatus;
+                            if (
+                              f.billing_mode === "stripe" &&
+                              !(await confirm({
+                                title: "Override Stripe?",
+                                message: `${f.name} is billed through Stripe, which sets access automatically. A manual change only lasts until Stripe's next update — to stop billing, cancel the subscription in Stripe instead.`,
+                                confirmLabel: "Change anyway",
+                              }))
                             )
-                          }
+                              return;
+                            guard(() =>
+                              updateFirm(f.id, { subscription_status: next })
+                            );
+                          }}
                         >
                           {STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -210,6 +342,82 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                             )
                           }
                         />
+                      </td>
+                      <td className="admin-billing">
+                        <div>
+                          {f.billing_mode === "stripe" ? (
+                            <span className="badge badge-active">
+                              Stripe · {f.stripe_status ?? "pending"}
+                            </span>
+                          ) : (
+                            <span className="badge">Manual</span>
+                          )}
+                          {f.cancel_at_period_end && (
+                            <span className="muted small"> cancels at renewal</span>
+                          )}
+                        </div>
+                        <div className="admin-tier">
+                          <select
+                            className="admin-inline"
+                            aria-label={`Plan size for ${f.name}`}
+                            value={f.tier ?? ""}
+                            onChange={async (e) => {
+                              const tier = (e.target.value || null) as Tier | null;
+                              if (
+                                f.billing_mode === "stripe" &&
+                                f.stripe_subscription_id &&
+                                !(await confirm({
+                                  title: "Change plan size?",
+                                  message: `${f.name} already pays through Stripe. Changing the size here doesn't change what Stripe charges — it only sets the price for their next checkout.`,
+                                  confirmLabel: "Change size",
+                                }))
+                              )
+                                return;
+                              guard(() => updateFirm(f.id, { tier }));
+                            }}
+                          >
+                            <option value="">— plan size —</option>
+                            {TIERS.map((t) => (
+                              <option key={t} value={t}>
+                                {tierDescription(t)}
+                              </option>
+                            ))}
+                          </select>
+                          {isTier(f.tier) &&
+                            tierFit(f.tier, memberCount(f.id)) === "over" && (
+                              <span className="small tier-warn">
+                                {memberCount(f.id)} members — over this size
+                              </span>
+                            )}
+                        </div>
+                        <input
+                          type="email"
+                          className="admin-inline"
+                          placeholder="Billing email…"
+                          defaultValue={f.billing_email}
+                          onBlur={(e) => {
+                            const billing_email = e.target.value.trim();
+                            if (billing_email !== f.billing_email)
+                              guard(() => updateFirm(f.id, { billing_email }));
+                          }}
+                        />
+                        <div className="admin-billing-actions">
+                          {f.billing_mode === "stripe" && f.stripe_customer_id ? (
+                            <button
+                              className="btn ghost small"
+                              onClick={() => openPortal(f)}
+                            >
+                              Billing portal ↗
+                            </button>
+                          ) : (
+                            <button
+                              className="btn ghost small"
+                              onClick={() => copyPayLink(f)}
+                            >
+                              Copy payment link
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td>{memberCount(f.id)}</td>
                       <td>
@@ -264,7 +472,7 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                           value={p.firm_id ?? ""}
                           onChange={(e) =>
                             guard(() =>
-                              setProfileFirm(p.id, e.target.value || null)
+                              setProfileFirm(p, e.target.value || null)
                             )
                           }
                         >

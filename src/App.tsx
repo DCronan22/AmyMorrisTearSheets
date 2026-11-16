@@ -91,11 +91,23 @@ export default function App() {
 
   // Regular members need a firm and an active subscription.
   if (!profile || !firm) {
-    return <NoFirm email={email} onSignOut={guardedSignOut} />;
+    return (
+      <NoFirm
+        userId={session.user.id}
+        email={email}
+        onSignOut={guardedSignOut}
+        onRefresh={refresh}
+      />
+    );
   }
   if (firm.subscription_status !== "active") {
     return (
-      <SubscriptionInactive firm={firm} email={email} onSignOut={guardedSignOut} />
+      <SubscriptionInactive
+        firm={firm}
+        email={email}
+        onSignOut={guardedSignOut}
+        onRefresh={refresh}
+      />
     );
   }
 

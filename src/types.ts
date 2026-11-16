@@ -414,12 +414,26 @@ export interface Firm {
   renewal_date: string | null;
   style: FirmStyle | null;
   created_at: string;
+  // Billing (migration 0008). 'manual' = invoiced/prepaid, status set by the
+  // admin; 'stripe' = the Stripe webhook keeps status + renewal_date current.
+  billing_mode: "manual" | "stripe";
+  billing_email: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_status: string | null;
+  cancel_at_period_end: boolean;
+  // Size tier (migration 0012), set by the platform admin; picks the Stripe
+  // price. null = not set yet (checkout refuses until it is).
+  tier: Tier | null;
 }
+
+/** Firm-size pricing tier. Mirrors the DB check constraint (migration 0012). */
+export type Tier = "small" | "mid" | "large";
 
 /** The `firms` columns the app reads — select these instead of `*` so new
  *  (e.g. billing/admin-only) columns never leak into the client by default. */
 export const FIRM_COLUMNS =
-  "id,name,subscription_status,renewal_date,style,created_at";
+  "id,name,subscription_status,renewal_date,style,created_at,billing_mode,billing_email,stripe_customer_id,stripe_subscription_id,stripe_status,cancel_at_period_end,tier";
 
 /** An app user, linked to a firm. */
 export interface Profile {

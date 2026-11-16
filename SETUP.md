@@ -131,12 +131,60 @@ add a `_redirects` file with `/*  /index.html  200`).
 
 ---
 
+## 8. Online billing with Stripe
+
+Each firm is billed either **manually** (invoice / prepaid, you set access in
+the admin panel, the default) or **through Stripe** (cards charged
+automatically, and the webhook keeps access and the renewal date in step). A
+firm switches to Stripe the moment its first checkout completes. Migrations
+`0008_billing.sql` and `0012_firm_requests_tiers.sql` add the columns.
+
+Pricing is per firm by **size tier**: small (1-4 accounts), mid (5-10),
+large (11+). You set each firm's tier; Checkout charges that tier's price.
+
+1. **Stripe account.** Activate it with the business details and the new
+   business bank account (Settings → Business → Bank accounts and currencies).
+   Do everything below in **test mode** first, then repeat it in live mode.
+2. **Product + prices.** Product catalog → add product "Tear Sheets" with a
+   three recurring **monthly** prices, one per tier (small / mid / large).
+   Copy the three `price_…` ids.
+3. **Customer portal.** Settings → Billing → Customer portal: allow updating
+   the payment method, viewing invoices and cancelling. Leave **plan
+   switching OFF**: you change a firm's tier, not the firm.
+4. **Failed payments.** Settings → Billing → Subscriptions and emails: turn on
+   Smart Retries and the failed-payment emails, and choose what happens after
+   the final retry: **mark the subscription unpaid** (access is paused, the
+   firm can fix its card and come back) or **cancel** it.
+5. **Webhook.** Developers → Webhooks → add endpoint
+   `https://sortedsheets.site/api/stripe-webhook` with the events
+   `checkout.session.completed` and `customer.subscription.created / updated /
+   deleted / paused / resumed`. Copy its signing secret (`whsec_…`).
+6. **Vercel env vars** (server-only, never `VITE_`): `STRIPE_SECRET_KEY`,
+   `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_SMALL`, `STRIPE_PRICE_MID`,
+   `STRIPE_PRICE_LARGE`, `STRIPE_PRICE_SETUP` (the one-time $150 setup fee,
+   created as a one-time price, charged on a firm's first checkout only),
+   `APP_URL` (`https://sortedsheets.site`). `SUPABASE_SERVICE_ROLE_KEY`
+   is already set. Redeploy.
+
+**Day to day:** a new firm signs up and sends a **request** (firm name + every
+account email). In the admin panel under **Firm requests**, pick its tier and
+**Approve** (or Decline). Approval creates the firm on trial with the requester
+as billing contact; the listed people join it once their email is confirmed.
+The billing contact then signs in and clicks **Subscribe**, or you use
+**Copy payment link** to email a 24-hour checkout link. Once a firm is
+on Stripe, its billing contact gets **⋯ → Manage billing…** (card, invoices,
+plan, cancel), and you get a **Billing portal** button for it. Manual and
+prepaid firms are never touched by Stripe.
+
+**Test locally:** `npm run dev` (port 5173) and
+`stripe listen --forward-to localhost:5173/api/stripe-webhook`; put the
+`whsec_…` it prints in `.env.local` as `STRIPE_WEBHOOK_SECRET`. Pay with card
+`4242 4242 4242 4242`.
+
 ## Notes & future enhancements
 
-- **Billing is manual for now** (you toggle access in the admin panel). When you
-  want automated recurring billing, the natural next step is Stripe Checkout +
-  a webhook (a small serverless function) that sets `firms.subscription_status`
-  automatically. The data model is already shaped for it.
+- **Billing** — see section 8. A manual status change on a Stripe-billed firm
+  only lasts until Stripe's next update; cancel or pause in Stripe instead.
 - **The `service_role` key** must never go in this app or the repo. Only the
   `anon` key belongs in the frontend; RLS is what keeps data safe.
 - **Items are stored as JSON** inside each `projects` row, which keeps the app

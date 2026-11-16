@@ -19,6 +19,8 @@ export const PER_MINUTE = {
   extract: 20,
   "detect-style": 10,
   "delete-user": 10,
+  "billing-checkout": 10,
+  "billing-portal": 10,
 } as const;
 
 /**
