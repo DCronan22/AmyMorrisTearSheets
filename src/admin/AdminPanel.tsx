@@ -111,6 +111,18 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
       setError(`Pick a plan size for ${f.name} first — it sets the price.`);
       return;
     }
+    // An active manual firm is already paid for outside Stripe (e.g. prepaid).
+    // New firms start as manual + trial, so they don't get this prompt.
+    if (
+      f.billing_mode === "manual" &&
+      f.subscription_status === "active" &&
+      !(await confirm({
+        title: "Move to card billing?",
+        message: `${f.name} is on manual billing and already active. If this link is paid, ${f.name} moves to monthly Stripe billing and is charged the one-time setup fee. Create the link anyway?`,
+        confirmLabel: "Create link",
+      }))
+    )
+      return;
     try {
       const url = await checkoutUrl(f.id);
       await navigator.clipboard.writeText(url);

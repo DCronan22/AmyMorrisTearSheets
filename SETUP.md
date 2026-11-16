@@ -171,9 +171,10 @@ account email). In the admin panel under **Firm requests**, pick its tier and
 **Approve** (or Decline). Approval creates the firm on trial with the requester
 as billing contact; the listed people join it once their email is confirmed.
 The billing contact then signs in and clicks **Subscribe**, or you use
-**Copy payment link** to email a 24-hour checkout link. Once a firm is
+**Copy payment link** to email a 24-hour checkout link (making a new link
+expires the firm's older unpaid ones, so only one can be paid). Once a firm is
 on Stripe, its billing contact gets **⋯ → Manage billing…** (card, invoices,
-plan, cancel), and you get a **Billing portal** button for it. Manual and
+cancel; plan switching is off, tier changes are yours), and you get a **Billing portal** button for it. Manual and
 prepaid firms are never touched by Stripe.
 
 **Test locally:** `npm run dev` (port 5173) and

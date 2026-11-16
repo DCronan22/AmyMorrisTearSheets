@@ -228,10 +228,9 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
   }
 
   // One live subscription per firm: changes go through the billing portal.
-  if (
-    firm.stripe_subscription_id &&
-    ["active", "trialing", "past_due"].includes(firm.stripe_status ?? "")
-  ) {
+  // unpaid/paused/incomplete still exist in Stripe and are fixed in the
+  // portal, not by starting a second subscription.
+  if (firm.stripe_subscription_id && LIVE_STATUSES.has(firm.stripe_status ?? "")) {
     return {
       status: 409,
       payload: {
@@ -252,6 +251,19 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
   }
 
   const customer = await ensureCustomer(sb, st, firm);
+
+  // Only the newest checkout link can be paid: expire any still-open ones
+  // (an emailed payment link, another tab), so a firm can't pay twice and
+  // end up with two subscriptions and two setup fees.
+  const open = await st.checkout.sessions.list({ customer, status: "open", limit: 100 });
+  for (const s of open.data) {
+    try {
+      await st.checkout.sessions.expire(s.id);
+    } catch {
+      // Already completed or expired in the meantime; nothing to do.
+    }
+  }
+
   const session = await st.checkout.sessions.create({
     mode: "subscription",
     customer,
@@ -332,6 +344,9 @@ function periodEnd(sub: Stripe.Subscription): number | null {
 
 const TERMINAL = new Set(["canceled", "incomplete_expired"]);
 
+/** Subscription statuses that still exist in Stripe (may bill or be fixed). */
+const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "paused", "incomplete"]);
+
 /**
  * True when the subscription is set to end later. The billing portal (current
  * API versions) records this as a `cancel_at` date rather than the older
@@ -348,7 +363,8 @@ export function cancelScheduled(
 /** Write the subscription's current state onto its firm. */
 async function syncSubscription(
   sb: SupabaseClient,
-  sub: Stripe.Subscription
+  sub: Stripe.Subscription,
+  st: Stripe | null = null
 ): Promise<void> {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   const metaFirm = sub.metadata?.firm_id;
@@ -371,6 +387,18 @@ async function syncSubscription(
     firm.stripe_subscription_id !== sub.id
   ) {
     return;
+  }
+
+  // The firm's subscription ended, but if the customer still has another live
+  // one (e.g. two checkouts were paid), follow that one instead of locking the
+  // firm out while Stripe keeps charging.
+  if (TERMINAL.has(sub.status) && st) {
+    const others = await st.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
+    const live = others.data.find((s) => s.id !== sub.id && LIVE_STATUSES.has(s.status));
+    if (live) {
+      console.warn(`stripe webhook: firm ${firm.id} has another live subscription ${live.id}; following it`);
+      sub = live;
+    }
   }
 
   const end = periodEnd(sub);
@@ -447,7 +475,7 @@ export async function handleWebhook(
 
   if (subscriptionId) {
     const sub = await st.subscriptions.retrieve(subscriptionId);
-    await syncSubscription(sb, sub);
+    await syncSubscription(sb, sub, st);
   }
 
   await sb
