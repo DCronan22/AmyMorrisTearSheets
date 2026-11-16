@@ -52,9 +52,9 @@ export default function UpdatePassword({ onDone }: Props) {
     <div className="auth-screen">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="brand-mark">TS</span>
+          <span className="brand-mark">SS</span>
           <div>
-            <div className="brand-name">Tear Sheets</div>
+            <div className="brand-name">Sorted Sheets</div>
             <div className="brand-sub">for interior designers</div>
           </div>
         </div>
@@ -70,7 +70,7 @@ export default function UpdatePassword({ onDone }: Props) {
               className="btn primary auth-submit"
               onClick={() => void onDone()}
             >
-              Continue to Tear Sheets
+              Continue to Sorted Sheets
             </button>
           </>
         ) : (

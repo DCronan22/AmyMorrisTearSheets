@@ -236,7 +236,7 @@ export function NoFirm({
         <h1 className="auth-title">Set up your firm</h1>
         <p className="muted">
           You're signed in as <strong>{email}</strong>. If your firm already uses
-          Tear Sheets, ask whoever set it up to add your email. Otherwise, request
+          Sorted Sheets, ask whoever set it up to add your email. Otherwise, request
           a new firm below and we'll review it.
         </p>
         {request?.status === "approved" && (
@@ -264,7 +264,7 @@ export function NoFirm({
           <fieldset className="request-emails">
             <legend>Who needs an account?</legend>
             <p className="muted small">
-              Add everyone at your firm who'll use Tear Sheets. Once we approve
+              Add everyone at your firm who'll use Sorted Sheets. Once we approve
               your firm, they can sign up with these addresses and they'll be
               let in automatically.
             </p>

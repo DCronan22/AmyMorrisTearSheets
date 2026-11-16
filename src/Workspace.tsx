@@ -261,9 +261,9 @@ export default function Workspace({
   // Brand the browser tab for whichever firm is signed in; restore the generic
   // product name when leaving the workspace (sign-out / admin panel).
   useEffect(() => {
-    document.title = `${firm.name} · Tear Sheets`;
+    document.title = `${firm.name} · Sorted Sheets`;
     return () => {
-      document.title = "Tear Sheets";
+      document.title = "Sorted Sheets";
     };
   }, [firm.name]);
 
@@ -1795,7 +1795,7 @@ export default function Workspace({
               <span className="brand-mark">{initials}</span>
               <div>
                 <div className="brand-name">{firm.name}</div>
-                <div className="brand-sub">Tear Sheets</div>
+                <div className="brand-sub">Sorted Sheets</div>
               </div>
             </div>
 
@@ -2372,6 +2372,7 @@ export default function Workspace({
           title={showing.title}
           startIndex={showing.startIndex}
           showVendor={showVendor}
+          onToggleVendor={toggleShowVendor}
           onClose={() => setShowing(null)}
         />
       )}

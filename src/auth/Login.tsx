@@ -1,4 +1,7 @@
 import { useState } from "react";
+import "../landing/landing.css";
+import { SiteFooter, SiteHeader } from "../landing/SiteChrome";
+import { linkTo, navigate, pathFor } from "../lib/router";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthProvider";
 import { authLinkErrorMessage } from "../lib/authErrors";
@@ -11,10 +14,25 @@ type Mode = "signin" | "signup" | "reset";
 const resetRedirectTo = () =>
   `${window.location.origin}${import.meta.env.BASE_URL}`;
 
-/** Email + password sign-in / sign-up screen shown when no user is logged in. */
-export default function Login() {
+/**
+ * Email + password sign-in (/login) and sign-up (/signup), shown inside the
+ * public site's header and footer. The password-reset form is a third mode of
+ * the sign-in page.
+ */
+export default function Login({ initialMode = "signin" }: { initialMode?: "signin" | "signup" }) {
   const { recoveryError, clearRecoveryError } = useAuth();
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setModeState] = useState<Mode>(initialMode);
+  // Follow the address bar (Log in / Get started links, back/forward).
+  const [routeMode, setRouteMode] = useState(initialMode);
+  if (routeMode !== initialMode) {
+    setRouteMode(initialMode);
+    setModeState(initialMode);
+  }
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    if (m === "signin" && initialMode !== "signin") navigate("login", { replace: true });
+    if (m === "signup" && initialMode !== "signup") navigate("signup", { replace: true });
+  };
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,7 +73,7 @@ export default function Login() {
         });
         if (error) throw error;
         setNotice(
-          "Account created. If email confirmation is on, check your inbox, then sign in. Your administrator will connect you to your firm."
+          "Account created. Check your inbox for a link to confirm your email address, then sign in here."
         );
         setMode("signin");
       } else {
@@ -74,23 +92,31 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-screen">
+    <div className="site">
+      <SiteHeader />
+      <main className="site-auth">
       <div className="auth-card">
-        <div className="auth-brand">
-          <span className="brand-mark">TS</span>
-          <div>
-            <div className="brand-name">Tear Sheets</div>
-            <div className="brand-sub">for interior designers</div>
-          </div>
-        </div>
-
         <h1 className="auth-title">
           {mode === "signin"
-            ? "Sign in"
+            ? "Log in"
             : mode === "signup"
               ? "Create your account"
               : "Reset your password"}
         </h1>
+
+        {mode === "signup" && (
+          <ol className="auth-steps">
+            <li>Create your account and confirm your email.</li>
+            <li>Tell us your firm's name and who needs access.</li>
+            <li>Once we approve it, choose monthly or annual billing.</li>
+          </ol>
+        )}
+        {mode === "signup" && (
+          <p className="muted small auth-join">
+            Joining a firm that already uses Sorted Sheets? Sign up with the
+            email address your firm gave us and you'll be let in automatically.
+          </p>
+        )}
 
         {mode === "reset" && (
           <p className="muted small">
@@ -172,31 +198,46 @@ export default function Login() {
             {busy
               ? "Please wait…"
               : mode === "signin"
-                ? "Sign in"
+                ? "Log in"
                 : mode === "signup"
                   ? "Create account"
                   : "Send reset link"}
           </button>
+          {mode === "signup" && (
+            <p className="auth-legal">
+              By creating an account you agree to our{" "}
+              <a href={pathFor("terms")} onClick={linkTo("terms")}>
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href={pathFor("privacy")} onClick={linkTo("privacy")}>
+                Privacy Policy
+              </a>
+              .
+            </p>
+          )}
         </form>
 
         <p className="auth-switch muted">
           {mode === "signin" ? (
             <>
-              No account yet?{" "}
+              New to Sorted Sheets?{" "}
               <button className="link-btn" onClick={() => setMode("signup")}>
-                Create one
+                Create an account
               </button>
             </>
           ) : (
             <>
               {mode === "reset" ? "Remembered it? " : "Already have an account? "}
               <button className="link-btn" onClick={() => setMode("signin")}>
-                Sign in
+                Log in
               </button>
             </>
           )}
         </p>
       </div>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

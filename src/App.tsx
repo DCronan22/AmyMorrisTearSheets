@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { useAuth } from "./auth/AuthProvider";
@@ -14,6 +14,9 @@ import {
 } from "./auth/Gates";
 import AdminPanel from "./admin/AdminPanel";
 import Workspace from "./Workspace";
+import Landing from "./landing/Landing";
+import { PrivacyPage, TermsPage } from "./legal/LegalPages";
+import { navigate, useRoute } from "./lib/router";
 
 /**
  * Top-level router/gate. Decides — based on Supabase config, auth session,
@@ -36,6 +39,14 @@ export default function App() {
   } = useAuth();
   const confirm = useConfirm();
   const [showAdmin, setShowAdmin] = useState(false);
+  const route = useRoute();
+
+  // Signed in on /login or /signup (e.g. just logged in): the app lives at /.
+  useEffect(() => {
+    if (session && (route === "login" || route === "signup")) {
+      navigate("home", { replace: true });
+    }
+  }, [session, route]);
 
   // Every sign-out (workspace menu, admin panel, every gate screen) routes
   // through here, so they all get the same confirmation prompt.
@@ -48,12 +59,20 @@ export default function App() {
     if (ok) await signOut();
   }, [confirm, signOut]);
 
+  // The legal pages are public and work signed in or out.
+  if (route === "terms") return <TermsPage />;
+  if (route === "privacy") return <PrivacyPage />;
+
   if (!isSupabaseConfigured) return <SetupNeeded />;
   // A password-recovery link takes precedence over every other state: the user
   // must set a new password before continuing, even though they have a session.
   if (recovering) return <UpdatePassword onDone={finishRecovery} />;
   if (loading) return <FullScreenLoader />;
-  if (!session) return <Login />;
+  if (!session) {
+    if (route === "login") return <Login initialMode="signin" />;
+    if (route === "signup") return <Login initialMode="signup" />;
+    return <Landing />;
+  }
 
   const email = session.user.email ?? "";
 

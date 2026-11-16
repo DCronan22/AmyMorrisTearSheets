@@ -818,6 +818,49 @@ a.btn {
 .show-close:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+/* "Vendor names" on/off switch in the present-mode toolbar. */
+.show-vendor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #c9bfae;
+  border-radius: 8px;
+  padding: 6px 12px 6px 8px;
+  font-size: 13px;
+}
+.show-vendor-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.show-vendor-toggle.active {
+  color: #f2ede4;
+}
+.show-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.15s;
+}
+.show-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #f2ede4;
+  transition: transform 0.15s;
+}
+.show-vendor-toggle.active .show-switch {
+  background: #b8a782;
+}
+.show-vendor-toggle.active .show-switch::after {
+  transform: translateX(12px);
+}
 .show-stage {
   flex: 1;
   display: flex;

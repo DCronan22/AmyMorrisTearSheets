@@ -21,6 +21,9 @@ interface Props {
   onClose: () => void;
   /** Show the vendor on each slide (visual only — matches the card toggle). */
   showVendor?: boolean;
+  /** Flip the vendor setting (shared with the cards). Shown as a toolbar
+   *  switch so a designer can hide sources in front of a client. */
+  onToggleVendor?: () => void;
 }
 
 /**
@@ -36,6 +39,7 @@ export default function Slideshow({
   startIndex,
   onClose,
   showVendor = true,
+  onToggleVendor,
 }: Props) {
   const [perScreen, setPerScreen] = useState(1);
   const [index, setIndex] = useState(
@@ -121,6 +125,18 @@ export default function Slideshow({
               </button>
             ))}
           </div>
+          {onToggleVendor && (
+            <button
+              className={`show-vendor-toggle${showVendor ? " active" : ""}`}
+              role="switch"
+              aria-checked={showVendor}
+              onClick={onToggleVendor}
+              title="Show or hide vendor names on every slide"
+            >
+              <span className="show-switch" aria-hidden="true" />
+              Vendor names
+            </button>
+          )}
           <div className="show-count">
             {perScreen === 1
               ? `${index + 1} / ${items.length}`
