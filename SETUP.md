@@ -139,15 +139,19 @@ automatically, and the webhook keeps access and the renewal date in step). A
 firm switches to Stripe the moment its first checkout completes. Migrations
 `0008_billing.sql` and `0012_firm_requests_tiers.sql` add the columns.
 
-Pricing is per firm by **size tier**: small (1-4 accounts), mid (5-10),
-large (11+). You set each firm's tier; Checkout charges that tier's price.
+Pricing is per firm by **size tier**: small (1-5 accounts), mid (6-10),
+large (11-20; bigger firms get a custom quote). You set each firm's tier;
+Checkout charges that tier's price, **monthly** (first payment adds a one-time
+setup fee) or **annually** (11 × monthly every year, i.e. a month free, and
+no setup fee).
 
 1. **Stripe account.** Activate it with the business details and the new
    business bank account (Settings → Business → Bank accounts and currencies).
    Do everything below in **test mode** first, then repeat it in live mode.
 2. **Product + prices.** Product catalog → add product "Tear Sheets" with a
-   three recurring **monthly** prices, one per tier (small / mid / large).
-   Copy the three `price_…` ids.
+   three recurring **monthly** prices and three recurring **yearly** prices
+   (11 × monthly), one each per tier, plus a one-time setup-fee price. Copy
+   the seven `price_…` ids into the `STRIPE_PRICE_*` env vars.
 3. **Customer portal.** Settings → Billing → Customer portal: allow updating
    the payment method, viewing invoices and cancelling. Leave **plan
    switching OFF**: you change a firm's tier, not the firm.

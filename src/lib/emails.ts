@@ -8,3 +8,22 @@ export function parseEmailList(text: string): string[] {
   }
   return [...seen];
 }
+
+// Same shape the database accepts (normalize_email_list); it re-checks anyway.
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export function looksLikeEmail(v: string): boolean {
+  return EMAIL_RE.test(v.trim());
+}
+
+/** Trimmed, lower-cased, de-duplicated, non-empty emails from input rows. */
+export function cleanEmails(rows: string[]): string[] {
+  return [...new Set(rows.map((r) => r.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** First row that isn't a valid email address, or null. Blank rows are fine;
+ *  duplicates are fine too (they're merged). */
+export function firstBadEmail(rows: string[]): string | null {
+  for (const r of rows) if (r.trim() && !looksLikeEmail(r)) return r.trim();
+  return null;
+}

@@ -2,8 +2,12 @@
 // /api/stripe-webhook.
 //
 // Model: one Stripe customer + one subscription per FIRM, priced by the firm's
-// size TIER (small 1-4 accounts, mid 5-10, large 11+). The platform admin sets
-// firms.tier; Checkout charges that tier's Stripe price. The webhook is the only thing that turns Stripe state
+// size TIER (small 1-5 accounts, mid 6-10, large 11-20). The platform admin sets
+// firms.tier; Checkout charges that tier's Stripe price, monthly or annually
+// (the payer picks). Monthly adds a one-time setup fee to a firm's first
+// subscription; annual is 11 × monthly every year (a month free) with no
+// setup fee.
+// The webhook is the only thing that turns Stripe state
 // into access: it writes firms.subscription_status, which RLS already enforces.
 // Firms with billing_mode = 'manual' (invoiced / prepaid) are never touched by
 // Stripe until a checkout for them completes.
@@ -11,11 +15,13 @@
 // Server env (never VITE_-prefixed):
 //   STRIPE_SECRET_KEY       sk_live_… / sk_test_…
 //   STRIPE_WEBHOOK_SECRET   whsec_… (from the webhook endpoint in Stripe)
-//   STRIPE_PRICE_SMALL      price_… monthly price for the small tier (1-4)
-//   STRIPE_PRICE_MID        price_… monthly price for the mid tier (5-10)
-//   STRIPE_PRICE_LARGE      price_… monthly price for the large tier (11+)
+//   STRIPE_PRICE_SMALL      price_… monthly price for the small tier (1-5)
+//   STRIPE_PRICE_MID        price_… monthly price for the mid tier (6-10)
+//   STRIPE_PRICE_LARGE      price_… monthly price for the large tier (11-20)
+//   STRIPE_PRICE_SMALL_ANNUAL / _MID_ANNUAL / _LARGE_ANNUAL
+//                           price_… yearly price per tier (11 × monthly)
 //   STRIPE_PRICE_SETUP      price_… ONE-TIME setup fee, added to a firm's
-//                           first checkout only (any tier)
+//                           first MONTHLY checkout only (any tier)
 //   APP_URL                 where Checkout/Portal send people back
 //                           (defaults to https://sortedsheets.site)
 //   SUPABASE_SERVICE_ROLE_KEY (already set for account deletion)
@@ -25,6 +31,13 @@ import { adminClient } from "./supabase-admin.js";
 
 export type Tier = "small" | "mid" | "large";
 export const TIERS: readonly Tier[] = ["small", "mid", "large"];
+
+export type Interval = "month" | "year";
+export const INTERVALS: readonly Interval[] = ["month", "year"];
+
+export function isInterval(v: unknown): v is Interval {
+  return typeof v === "string" && (INTERVALS as readonly string[]).includes(v);
+}
 
 export function isTier(v: unknown): v is Tier {
   return typeof v === "string" && (TIERS as readonly string[]).includes(v);
@@ -51,9 +64,11 @@ const PRICE_ENV: Record<Tier, string> = {
 };
 
 /** The Stripe price a tier is charged (from env; never hardcoded). */
-export function priceForTier(tier: Tier): string | undefined {
-  return process.env[PRICE_ENV[tier]] || undefined;
+export function priceForTier(tier: Tier, interval: Interval = "month"): string | undefined {
+  const name = PRICE_ENV[tier] + (interval === "year" ? "_ANNUAL" : "");
+  return process.env[name] || undefined;
 }
+
 
 /** The one-time setup fee price (from env). */
 export function setupFeePrice(): string | undefined {
@@ -61,18 +76,21 @@ export function setupFeePrice(): string | undefined {
 }
 
 /**
- * The setup fee is charged once, on a firm's first subscription. A firm that
- * has had a subscription before (stripe_subscription_id is kept after it
- * ends) re-subscribes without it.
+ * The setup fee is charged once, on a firm's first MONTHLY subscription.
+ * Annual never has one. A firm that has had a subscription before
+ * (stripe_subscription_id is kept after it ends) re-subscribes without it.
  */
-export function owesSetupFee(firm: { stripe_subscription_id: string | null }): boolean {
-  return !firm.stripe_subscription_id;
+export function owesSetupFee(
+  firm: { stripe_subscription_id: string | null },
+  interval: Interval = "month"
+): boolean {
+  return interval === "month" && !firm.stripe_subscription_id;
 }
 
-/** Which tier a Stripe price belongs to, or null if it isn't one of ours. */
+/** Which tier a Stripe price (either interval) belongs to, or null if it isn't one of ours. */
 export function tierForPrice(priceId: string | undefined): Tier | null {
   if (!priceId) return null;
-  return TIERS.find((t) => priceForTier(t) === priceId) ?? null;
+  return TIERS.find((t) => INTERVALS.some((i) => priceForTier(t, i) === priceId)) ?? null;
 }
 
 function appUrl(): string {
@@ -196,6 +214,8 @@ async function ensureCustomer(
 
 export interface CheckoutBody {
   firmId?: string;
+  /** "month" (default) or "year". */
+  interval?: string;
 }
 
 /** Start a Stripe Checkout for the firm's subscription; returns its URL. */
@@ -219,11 +239,17 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
     };
   }
   const tier = firm.tier;
-  const price = priceForTier(tier);
+  const interval = body.interval ?? "month";
+  if (!isInterval(interval)) {
+    return { status: 400, payload: { error: "Choose monthly or annual billing." } };
+  }
+  const price = priceForTier(tier, interval);
   if (!price) {
     return {
       status: 400,
-      payload: { error: `The ${tier} plan isn't available yet.` },
+      payload: {
+        error: `The ${tier} plan isn't available ${interval === "year" ? "annually" : "monthly"} yet.`,
+      },
     };
   }
 
@@ -240,9 +266,10 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
     };
   }
 
-  // First subscription: the one-time setup fee goes on the first invoice.
+  // First monthly subscription: the one-time setup fee goes on the first
+  // invoice. Annual has no setup fee (its month free is in the yearly price).
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price, quantity: 1 }];
-  if (owesSetupFee(firm)) {
+  if (owesSetupFee(firm, interval)) {
     const setup = setupFeePrice();
     if (!setup) {
       return { status: 400, payload: { error: "Online sign-up isn't available yet." } };
@@ -269,8 +296,8 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
     customer,
     line_items: lineItems,
     client_reference_id: firm.id,
-    metadata: { firm_id: firm.id, tier },
-    subscription_data: { metadata: { firm_id: firm.id, tier } },
+    metadata: { firm_id: firm.id, tier, interval },
+    subscription_data: { metadata: { firm_id: firm.id, tier, interval } },
     allow_promotion_codes: true,
     success_url: `${appUrl()}/?billing=success`,
     cancel_url: `${appUrl()}/?billing=canceled`,
@@ -415,7 +442,10 @@ async function syncSubscription(
   };
   // firms.tier is the admin's decision and is never overwritten from Stripe;
   // a subscription on a different tier's price is only flagged.
-  const paidTier = tierForPrice(sub.items.data[0]?.price?.id);
+  const item = sub.items.data[0];
+  const paidTier = tierForPrice(item?.price?.id);
+  const billed = item?.price?.recurring?.interval;
+  if (isInterval(billed)) patch.billing_interval = billed;
   if (paidTier && firm.tier && paidTier !== firm.tier) {
     console.warn(`stripe webhook: firm ${firm.id} pays ${paidTier} but is set to ${firm.tier}`);
   }

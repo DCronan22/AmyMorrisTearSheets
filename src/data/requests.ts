@@ -66,15 +66,19 @@ export async function fetchPendingRequests(): Promise<FirmRequest[]> {
   return (data ?? []) as FirmRequest[];
 }
 
+/** Approve a request for `emails` (a subset of its list; the requester is
+ *  always included). Those people join the firm once their email is confirmed. */
 export async function approveFirmRequest(
   id: string,
   tier: Tier,
+  emails: string[],
   firmName?: string
 ): Promise<string> {
   const { data, error } = await supabase.rpc("admin_approve_firm_request", {
     p_request: id,
     p_tier: tier,
     p_firm_name: firmName ?? null,
+    p_emails: emails,
   });
   if (error) throw new Error(error.message);
   return data as string;

@@ -1,5 +1,5 @@
 import { authedPostJson, apiErrorMessage } from "../lib/api";
-import type { Firm } from "../types";
+import type { BillingInterval, Firm } from "../types";
 
 async function billingUrl(path: string, body: unknown, fallback: string): Promise<string> {
   const { res, json } = await authedPostJson(path, body).catch(() => {
@@ -16,8 +16,11 @@ async function billingUrl(path: string, body: unknown, fallback: string): Promis
  * own firm (billing contact only); the platform admin passes firmId to make a
  * link to send to a client.
  */
-export function checkoutUrl(firmId?: string): Promise<string> {
-  return billingUrl("/api/billing-checkout", { firmId }, "Couldn't start checkout.");
+export function checkoutUrl(
+  firmId?: string,
+  interval: BillingInterval = "month"
+): Promise<string> {
+  return billingUrl("/api/billing-checkout", { firmId, interval }, "Couldn't start checkout.");
 }
 
 /** A Stripe customer-portal link (update card, invoices, cancel). */

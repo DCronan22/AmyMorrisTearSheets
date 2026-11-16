@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../components/ConfirmProvider";
-import type { Firm, Profile, SubscriptionStatus, Tier } from "../types";
+import type { BillingInterval, Firm, Profile, SubscriptionStatus, Tier } from "../types";
 import {
   createFirm,
   deleteFirm,
   deleteUser,
+  fetchApprovedEmails,
   fetchFirms,
   fetchProfiles,
+  setFirmEmails,
   setProfileFirm,
   setProfileRole,
   updateFirm,
@@ -19,13 +21,17 @@ import {
 } from "../data/requests";
 import type { FirmRequest } from "../data/requests";
 import {
+  MAX_LISTED_SEATS,
   TIERS,
   TIER_LABEL,
+  isCustomSize,
   isTier,
   tierDescription,
   tierFit,
   tierForSeats,
 } from "../lib/tiers";
+import EmailRows from "../components/EmailRows";
+import { cleanEmails, firstBadEmail } from "../lib/emails";
 
 const STATUSES: SubscriptionStatus[] = [
   "active",
@@ -55,18 +61,27 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
   const [requests, setRequests] = useState<FirmRequest[]>([]);
   // Tier chosen per pending request (defaults to the size its emails suggest).
   const [requestTier, setRequestTier] = useState<Record<string, Tier>>({});
+  // Emails the admin UNticked per pending request (everything else is approved).
+  const [requestSkip, setRequestSkip] = useState<Record<string, string[]>>({});
+  // Approved sign-up emails per firm (firm_approved_emails).
+  const [approved, setApproved] = useState<Record<string, string[]>>({});
+  // Firm whose email list is open, and the new rows being typed for it.
+  const [emailsOpen, setEmailsOpen] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState<string[]>([""]);
 
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const [f, p, r] = await Promise.all([
+      const [f, p, r, a] = await Promise.all([
         fetchFirms(),
         fetchProfiles(),
         fetchPendingRequests(),
+        fetchApprovedEmails(),
       ]);
       setFirms(f);
       setProfiles(p);
       setRequests(r);
+      setApproved(a);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load admin data.");
     } finally {
@@ -82,6 +97,62 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
 
   function memberCount(firmId: string) {
     return profiles.filter((p) => p.firm_id === firmId).length;
+  }
+
+  /** Accounts a firm is sized for: its members plus approved emails not joined yet. */
+  function seatCount(firmId: string) {
+    const emails = new Set(approved[firmId] ?? []);
+    for (const p of profiles) if (p.firm_id === firmId) emails.add(p.email.trim().toLowerCase());
+    return emails.size;
+  }
+
+  /** Where an approved email stands: joined, waiting on email confirmation, or not signed up. */
+  function emailStatus(firmId: string, email: string): { label: string; cls: string } {
+    const p = profiles.find((x) => x.email.trim().toLowerCase() === email);
+    if (!p) return { label: "Not signed up yet", cls: "is-waiting" };
+    if (p.firm_id === firmId) return { label: "Joined", cls: "is-joined" };
+    if (p.firm_id) return { label: "In another firm", cls: "is-problem" };
+    return { label: "Signed up, confirming email", cls: "is-waiting" };
+  }
+
+  function toggleEmails(firmId: string) {
+    setEmailsOpen((cur) => (cur === firmId ? null : firmId));
+    setEmailDraft([""]);
+  }
+
+  async function addFirmEmails(f: Firm) {
+    setNotice(null);
+    const bad = firstBadEmail(emailDraft);
+    if (bad) {
+      setError(`"${bad}" doesn't look like an email address.`);
+      return;
+    }
+    const added = cleanEmails(emailDraft);
+    if (!added.length) return;
+    const list = [...new Set([...(approved[f.id] ?? []), ...added])];
+    if (await guard(() => setFirmEmails(f.id, list))) {
+      setEmailDraft([""]);
+      setNotice(
+        `Approved ${added.length} ${added.length === 1 ? "email" : "emails"} for ${f.name}. They'll join as soon as they sign up and confirm their address.`
+      );
+    }
+  }
+
+  async function removeFirmEmail(f: Firm, email: string) {
+    setNotice(null);
+    const joined = emailStatus(f.id, email).cls === "is-joined";
+    if (
+      !(await confirm({
+        title: "Remove approved email?",
+        message: joined
+          ? `${email} is already in ${f.name}. Taking it off the list stops it re-joining later, but doesn't remove them now — do that in the Users table.`
+          : `${email} won't be let into ${f.name} automatically any more.`,
+        confirmLabel: "Remove",
+        danger: true,
+      }))
+    )
+      return;
+    await guard(() => setFirmEmails(f.id, (approved[f.id] ?? []).filter((e) => e !== email)));
   }
 
   /** Runs an admin action, refreshes the tables, and surfaces any failure. */
@@ -100,7 +171,7 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
   }
 
   /** Make a Checkout link for a firm and put it on the clipboard to send. */
-  async function copyPayLink(f: Firm) {
+  async function copyPayLink(f: Firm, interval: BillingInterval) {
     setError(null);
     setNotice(null);
     if (!f.billing_email) {
@@ -118,16 +189,16 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
       f.subscription_status === "active" &&
       !(await confirm({
         title: "Move to card billing?",
-        message: `${f.name} is on manual billing and already active. If this link is paid, ${f.name} moves to monthly Stripe billing and is charged the one-time setup fee. Create the link anyway?`,
+        message: `${f.name} is on manual billing and already active. If this link is paid, ${f.name} moves to ${interval === "year" ? "annual Stripe billing (no setup fee)" : "monthly Stripe billing and is charged the one-time setup fee"}. Create the link anyway?`,
         confirmLabel: "Create link",
       }))
     )
       return;
     try {
-      const url = await checkoutUrl(f.id);
+      const url = await checkoutUrl(f.id, interval);
       await navigator.clipboard.writeText(url);
       setNotice(
-        `${TIER_LABEL[f.tier]}-tier payment link for ${f.name} copied — paste it into an email. It expires in 24 hours.`
+        `${TIER_LABEL[f.tier]}-tier ${interval === "year" ? "annual" : "monthly"} payment link for ${f.name} copied — paste it into an email. It expires in 24 hours, and any earlier link stops working.`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't make a payment link.");
@@ -174,7 +245,11 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
               <h2>Firm requests ({requests.length})</h2>
               <div className="admin-requests">
                 {requests.map((r) => {
-                  const tier = requestTier[r.id] ?? tierForSeats(r.member_emails.length);
+                  const skip = requestSkip[r.id] ?? [];
+                  const picked = r.member_emails.filter(
+                    (e) => e === r.requester_email || !skip.includes(e)
+                  );
+                  const tier = requestTier[r.id] ?? tierForSeats(picked.length);
                   return (
                     <div className="admin-request" key={r.id}>
                       <div className="admin-request-head">
@@ -186,9 +261,47 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                           {r.member_emails.length === 1 ? "account" : "accounts"}
                         </span>
                       </div>
-                      <div className="admin-request-emails">
-                        {r.member_emails.join(", ")}
-                      </div>
+                      <p className="muted small admin-request-hint">
+                        Ticked emails are approved: those people join {r.firm_name}{" "}
+                        automatically once they sign up and confirm their address.
+                      </p>
+                      <ul className="admin-request-emails">
+                        {r.member_emails.map((e) => {
+                          const isRequester = e === r.requester_email;
+                          const on = isRequester || !skip.includes(e);
+                          return (
+                            <li key={e}>
+                              <label className={on ? undefined : "is-off"}>
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  disabled={isRequester}
+                                  onChange={() =>
+                                    setRequestSkip((m) => {
+                                      const cur = m[r.id] ?? [];
+                                      return {
+                                        ...m,
+                                        [r.id]: cur.includes(e)
+                                          ? cur.filter((x) => x !== e)
+                                          : [...cur, e],
+                                      };
+                                    })
+                                  }
+                                />
+                                <span>{e}</span>
+                                {isRequester && (
+                                  <span className="muted small">requester, billing contact</span>
+                                )}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {isCustomSize(picked.length) && (
+                        <p className="small tier-warn">
+                          {picked.length} accounts is over {MAX_LISTED_SEATS}: agree a custom price before approving.
+                        </p>
+                      )}
                       {r.message && <p className="small">“{r.message}”</p>}
                       <div className="admin-request-actions">
                         <select
@@ -207,9 +320,16 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                         </select>
                         <button
                           className="btn primary small"
-                          onClick={() => guard(() => approveFirmRequest(r.id, tier))}
+                          onClick={async () => {
+                            setNotice(null);
+                            if (await guard(() => approveFirmRequest(r.id, tier, picked))) {
+                              setNotice(
+                                `Approved ${r.firm_name} (${TIER_LABEL[tier]}) with ${picked.length} ${picked.length === 1 ? "account" : "accounts"}.`
+                              );
+                            }
+                          }}
                         >
-                          Approve
+                          Approve {picked.length} {picked.length === 1 ? "account" : "accounts"}
                         </button>
                         <button
                           className="btn ghost small danger"
@@ -297,7 +417,8 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                 </thead>
                 <tbody>
                   {firms.map((f) => (
-                    <tr key={f.id}>
+                    <Fragment key={f.id}>
+                    <tr>
                       <td>
                         <input
                           className="admin-inline"
@@ -360,6 +481,7 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                           {f.billing_mode === "stripe" ? (
                             <span className="badge badge-active">
                               Stripe · {f.stripe_status ?? "pending"}
+                              {f.billing_interval && ` · ${f.billing_interval === "year" ? "annual" : "monthly"}`}
                             </span>
                           ) : (
                             <span className="badge">Manual</span>
@@ -396,9 +518,10 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                             ))}
                           </select>
                           {isTier(f.tier) &&
-                            tierFit(f.tier, memberCount(f.id)) === "over" && (
+                            tierFit(f.tier, seatCount(f.id)) === "over" && (
                               <span className="small tier-warn">
-                                {memberCount(f.id)} members — over this size
+                                {seatCount(f.id)} accounts —{" "}
+                                {isCustomSize(seatCount(f.id)) ? `over ${MAX_LISTED_SEATS}, custom price` : "over this size"}
                               </span>
                             )}
                         </div>
@@ -422,16 +545,35 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                               Billing portal ↗
                             </button>
                           ) : (
-                            <button
-                              className="btn ghost small"
-                              onClick={() => copyPayLink(f)}
-                            >
-                              Copy payment link
-                            </button>
+                            <>
+                              <button
+                                className="btn ghost small"
+                                onClick={() => copyPayLink(f, "month")}
+                              >
+                                Copy monthly link
+                              </button>
+                              <button
+                                className="btn ghost small"
+                                onClick={() => copyPayLink(f, "year")}
+                              >
+                                Copy annual link
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
-                      <td>{memberCount(f.id)}</td>
+                      <td>
+                        <div>{memberCount(f.id)}</div>
+                        <button
+                          className="btn ghost small admin-emails-toggle"
+                          aria-expanded={emailsOpen === f.id}
+                          onClick={() => toggleEmails(f.id)}
+                        >
+                          {(approved[f.id] ?? []).length} approved{" "}
+                          {(approved[f.id] ?? []).length === 1 ? "email" : "emails"}{" "}
+                          {emailsOpen === f.id ? "▴" : "▾"}
+                        </button>
+                      </td>
                       <td>
                         <button
                           className="btn ghost small danger"
@@ -451,6 +593,66 @@ export default function AdminPanel({ onClose, onSignOut, adminEmail }: Props) {
                         </button>
                       </td>
                     </tr>
+                    {emailsOpen === f.id && (
+                      <tr className="admin-emails-row">
+                        <td colSpan={6}>
+                          <div className="admin-emails">
+                            <p className="muted small">
+                              Anyone on this list joins <strong>{f.name}</strong>{" "}
+                              automatically once they sign up and confirm their
+                              email. No need to assign them one by one.
+                            </p>
+                            {(approved[f.id] ?? []).length > 0 ? (
+                              <ul className="admin-email-list">
+                                {(approved[f.id] ?? []).map((e) => {
+                                  const st = emailStatus(f.id, e);
+                                  return (
+                                    <li key={e}>
+                                      <span className="admin-email">{e}</span>
+                                      <span className={`email-status ${st.cls}`}>{st.label}</span>
+                                      <button
+                                        className="email-row-remove"
+                                        aria-label={`Remove ${e}`}
+                                        title="Remove"
+                                        onClick={() => removeFirmEmail(f, e)}
+                                      >
+                                        ×
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (
+                              <p className="muted small">No approved emails yet.</p>
+                            )}
+                            <form
+                              className="admin-emails-add"
+                              noValidate
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                void addFirmEmails(f);
+                              }}
+                            >
+                              <EmailRows
+                                rows={emailDraft}
+                                onChange={setEmailDraft}
+                                addLabel="+ Add another email"
+                              />
+                              <button
+                                className="btn primary small"
+                                disabled={!cleanEmails(emailDraft).length}
+                              >
+                                Approve{" "}
+                                {cleanEmails(emailDraft).length > 1
+                                  ? `${cleanEmails(emailDraft).length} emails`
+                                  : "email"}
+                              </button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

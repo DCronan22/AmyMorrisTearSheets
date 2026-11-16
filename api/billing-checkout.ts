@@ -9,6 +9,7 @@ export default makeHandler<CheckoutBody>({
   endpoint: "billing-checkout",
   fields: {
     firmId: { type: "string", maxLength: 64 },
+    interval: { type: "string", maxLength: 8 },
   },
   run: runCheckout,
   // An inactive/unpaid firm must still reach this to pay; billing.ts checks

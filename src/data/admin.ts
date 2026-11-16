@@ -95,6 +95,37 @@ export async function saveFirmNotes(
   if (error) throw error;
 }
 
+/**
+ * Every firm's approved sign-up emails (migration 0012), keyed by firm id.
+ * Someone on a firm's list joins it automatically once their email address
+ * is confirmed — no per-person assignment needed.
+ */
+export async function fetchApprovedEmails(): Promise<Record<string, string[]>> {
+  const { data, error } = await supabase
+    .from("firm_approved_emails")
+    .select("email,firm_id")
+    .order("email");
+  if (error) throw error;
+  const out: Record<string, string[]> = {};
+  for (const row of (data ?? []) as { email: string; firm_id: string }[]) {
+    (out[row.firm_id] ??= []).push(row.email);
+  }
+  return out;
+}
+
+/**
+ * Replace a firm's approved-email list. Newly listed people who have already
+ * signed up and confirmed their email join straight away. Taking someone off
+ * the list doesn't remove them from the firm (use the Users table for that).
+ */
+export async function setFirmEmails(firmId: string, emails: string[]): Promise<void> {
+  const { error } = await supabase.rpc("admin_set_firm_emails", {
+    p_firm: firmId,
+    p_emails: emails,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function deleteFirm(id: string): Promise<void> {
   const { error } = await supabase.from("firms").delete().eq("id", id);
   if (error) throw error;

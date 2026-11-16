@@ -1877,6 +1877,318 @@ a.btn {
   color: var(--danger);
 }
 
+/* One-email-per-row input (sign-up form + admin approved emails). */
+.request-emails {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.request-emails legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.request-form .request-emails .muted.small {
+  margin: 0 0 4px;
+}
+
+.email-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.email-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.email-row input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.email-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.email-row.has-problem input {
+  border-color: var(--danger);
+}
+
+.email-row.is-locked input {
+  background: var(--bg);
+  color: var(--ink-soft);
+}
+
+.email-row-note {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.email-row-problem {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.email-row.has-problem .email-row-problem {
+  color: var(--danger);
+}
+
+.email-row-remove {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.email-row-remove:hover,
+.email-row-remove:focus-visible {
+  border-color: var(--line);
+  color: var(--danger);
+}
+
+.email-rows-add {
+  align-self: flex-start;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.email-rows-add:hover {
+  text-decoration: underline;
+}
+
+.pricing-annual {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.pricing-custom {
+  color: var(--accent-dark);
+}
+
+/* Subscribe screen: annual vs monthly. */
+.subscribe-actions {
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0 0 14px;
+}
+
+.interval-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.interval-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.interval-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.interval-option.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.interval-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.interval-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.interval-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.interval-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.interval-price {
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.interval-detail {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 420px) {
+  .interval-choice {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Admin: request email checkboxes. */
+.admin-request-hint {
+  margin: 8px 0 4px;
+}
+
+ul.admin-request-emails {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 16px;
+}
+
+.admin-request-emails label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.admin-request-emails label.is-off span:first-of-type {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Admin: a firm's approved emails (expands under its row). */
+.admin-emails-toggle {
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.admin-emails-row > td {
+  background: var(--bg);
+}
+
+.admin-emails {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+  padding: 4px 0;
+}
+
+.admin-emails > .muted.small {
+  margin: 0;
+}
+
+.admin-email-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.admin-email-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 12px;
+}
+
+.admin-email-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.admin-email {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.email-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #eef0f6;
+  color: #4a5482;
+}
+
+.email-status.is-joined {
+  background: #e6f0e4;
+  color: #3e6b37;
+}
+
+.email-status.is-problem {
+  background: #f6e4e1;
+  color: var(--danger);
+}
+
+.admin-emails-add {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.admin-emails-add .email-rows {
+  align-self: stretch;
+}
+
 /* --- Auto-fill (paste-a-link) bar in the item editor ----------- */
 .autofill-bar {
   margin: 4px 0 18px;

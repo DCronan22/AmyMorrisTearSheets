@@ -425,15 +425,21 @@ export interface Firm {
   // Size tier (migration 0012), set by the platform admin; picks the Stripe
   // price. null = not set yet (checkout refuses until it is).
   tier: Tier | null;
+  // How the Stripe subscription bills (migration 0013), set by the webhook.
+  // null = not billed through Stripe yet.
+  billing_interval: BillingInterval | null;
 }
 
 /** Firm-size pricing tier. Mirrors the DB check constraint (migration 0012). */
 export type Tier = "small" | "mid" | "large";
 
+/** Stripe billing interval (migration 0013). */
+export type BillingInterval = "month" | "year";
+
 /** The `firms` columns the app reads — select these instead of `*` so new
  *  (e.g. billing/admin-only) columns never leak into the client by default. */
 export const FIRM_COLUMNS =
-  "id,name,subscription_status,renewal_date,style,created_at,billing_mode,billing_email,stripe_customer_id,stripe_subscription_id,stripe_status,cancel_at_period_end,tier";
+  "id,name,subscription_status,renewal_date,style,created_at,billing_mode,billing_email,stripe_customer_id,stripe_subscription_id,stripe_status,cancel_at_period_end,tier,billing_interval";
 
 /** An app user, linked to a firm. */
 export interface Profile {

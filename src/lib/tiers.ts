@@ -1,4 +1,4 @@
-import type { Tier } from "../types";
+import type { BillingInterval, Tier } from "../types";
 
 // Firm-size tiers. Stripe is what actually charges (price ids in server env);
 // the dollar amounts below are for DISPLAY only (sign-up form, plan screen).
@@ -13,15 +13,29 @@ export const TIER_PRICE_USD: Record<Tier, number> = {
   large: 600,
 };
 
-/** One-time setup fee added to a firm's first month (display only). */
+/** One-time setup fee on a firm's first MONTHLY subscription (display only). */
 export const SETUP_FEE_USD = 150;
 
-/** Inclusive account-count range per tier (max null = no upper limit). */
-export const TIER_SEATS: Record<Tier, { min: number; max: number | null }> = {
-  small: { min: 1, max: 4 },
-  mid: { min: 5, max: 10 },
-  large: { min: 11, max: null },
+/** Yearly price: 11 months, i.e. one month free every year, no setup fee
+ *  (the Stripe annual price). */
+export function annualPriceUsd(tier: Tier): number {
+  return TIER_PRICE_USD[tier] * 11;
+}
+
+/** What a firm's FIRST payment is, by billing interval. */
+export function firstPaymentUsd(tier: Tier, interval: BillingInterval): number {
+  return interval === "year" ? annualPriceUsd(tier) : TIER_PRICE_USD[tier] + SETUP_FEE_USD;
+}
+
+/** Inclusive account-count range per tier. Above the large max = custom quote. */
+export const TIER_SEATS: Record<Tier, { min: number; max: number }> = {
+  small: { min: 1, max: 5 },
+  mid: { min: 6, max: 10 },
+  large: { min: 11, max: 20 },
 };
+
+/** Largest firm the listed plans cover; bigger firms get a custom price. */
+export const MAX_LISTED_SEATS = TIER_SEATS.large.max;
 
 export const TIER_LABEL: Record<Tier, string> = {
   small: "Small",
@@ -33,32 +47,43 @@ export function isTier(v: unknown): v is Tier {
   return typeof v === "string" && (TIERS as readonly string[]).includes(v);
 }
 
-/** "Small (1-4 accounts)" etc. */
+/** "Small (1-5 accounts)" etc. */
 export function tierDescription(tier: Tier): string {
-  const { min, max } = TIER_SEATS[tier];
-  return `${TIER_LABEL[tier]} (${max === null ? `${min}+` : `${min}-${max}`} accounts)`;
+  return `${TIER_LABEL[tier]} (${tierSeatsText(tier)})`;
 }
 
-/** "1-4 accounts" / "11+ accounts". */
+/** "1-5 accounts". */
 export function tierSeatsText(tier: Tier): string {
   const { min, max } = TIER_SEATS[tier];
-  return `${max === null ? `${min}+` : `${min}-${max}`} accounts`;
+  return `${min}-${max} accounts`;
 }
 
-/** The tier a firm with this many accounts belongs in. */
+function seatCount(seats: number): number {
+  return Math.max(1, Math.floor(Number.isFinite(seats) ? seats : 1));
+}
+
+/** The tier a firm with this many accounts belongs in (large for 11 and up). */
 export function tierForSeats(seats: number): Tier {
-  const n = Math.max(1, Math.floor(Number.isFinite(seats) ? seats : 1));
-  if (n <= (TIER_SEATS.small.max as number)) return "small";
-  if (n <= (TIER_SEATS.mid.max as number)) return "mid";
+  const n = seatCount(seats);
+  if (n <= TIER_SEATS.small.max) return "small";
+  if (n <= TIER_SEATS.mid.max) return "mid";
   return "large";
+}
+
+/** More accounts than any listed plan covers (priced by hand). */
+export function isCustomSize(seats: number): boolean {
+  return seatCount(seats) > MAX_LISTED_SEATS;
 }
 
 /**
  * How a firm's account count compares with its tier: "over" means it has
- * outgrown the tier it pays for, "under" that it would fit a smaller one.
+ * outgrown the tier it pays for (including large past 20), "under" that it
+ * would fit a smaller one.
  */
 export function tierFit(tier: Tier, seats: number): "ok" | "over" | "under" {
-  const want = tierForSeats(seats);
-  if (want === tier) return "ok";
-  return TIERS.indexOf(want) > TIERS.indexOf(tier) ? "over" : "under";
+  const n = seatCount(seats);
+  const { min, max } = TIER_SEATS[tier];
+  if (n > max) return "over";
+  if (n < min) return "under";
+  return "ok";
 }

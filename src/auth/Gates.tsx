@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import type { Firm } from "../types";
+import type { BillingInterval, Firm, Tier } from "../types";
 import { checkoutUrl, isBillingContact, portalUrl } from "../data/billing";
+import EmailRows from "../components/EmailRows";
 import {
   fetchMyRequest,
   submitFirmRequest,
@@ -9,16 +10,21 @@ import {
 } from "../data/requests";
 import type { FirmRequest } from "../data/requests";
 import {
+  annualPriceUsd,
+  isCustomSize,
   isTier,
   tierDescription,
   tierForSeats,
   tierSeatsText,
+  MAX_LISTED_SEATS,
   SETUP_FEE_USD,
   TIER_LABEL,
   TIER_PRICE_USD,
   TIERS,
 } from "../lib/tiers";
-import { parseEmailList } from "../lib/emails";
+import { cleanEmails, firstBadEmail } from "../lib/emails";
+
+const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
 
 /** Shown when the Supabase env vars are missing (pre-setup). */
 export function SetupNeeded() {
@@ -97,7 +103,7 @@ export function NoFirm({
 }) {
   const [request, setRequest] = useState<FirmRequest | null | undefined>(undefined);
   const [firmName, setFirmName] = useState("");
-  const [emails, setEmails] = useState("");
+  const [emails, setEmails] = useState<string[]>([""]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,9 +146,14 @@ export function NoFirm({
       setError("Enter your firm's name.");
       return;
     }
+    const bad = firstBadEmail(emails);
+    if (bad) {
+      setError(`"${bad}" doesn't look like an email address.`);
+      return;
+    }
     setBusy(true);
     try {
-      await submitFirmRequest(firmName.trim(), parseEmailList(emails), note.trim());
+      await submitFirmRequest(firmName.trim(), cleanEmails(emails), note.trim());
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't send the request.");
@@ -217,7 +228,8 @@ export function NoFirm({
     );
   }
 
-  const others = parseEmailList(emails).filter((x) => x !== email.trim().toLowerCase());
+  const others = cleanEmails(emails).filter((x) => x !== email.trim().toLowerCase());
+  const seats = others.length + 1;
   return (
     <div className="auth-screen">
       <div className="auth-card">
@@ -239,7 +251,7 @@ export function NoFirm({
             us if you think that's a mistake, or send a new one.
           </p>
         )}
-        <form className="auth-form request-form" onSubmit={submit}>
+        <form className="auth-form request-form" onSubmit={submit} noValidate>
           <label>
             Firm name
             <input
@@ -249,24 +261,37 @@ export function NoFirm({
               placeholder="Your design firm"
             />
           </label>
-          <label>
-            Everyone else who needs an account
-            <textarea
-              rows={4}
-              value={emails}
-              onChange={(e) => setEmails(e.target.value)}
-              placeholder="One email per line. You're included automatically."
+          <fieldset className="request-emails">
+            <legend>Who needs an account?</legend>
+            <p className="muted small">
+              Add everyone at your firm who'll use Tear Sheets. Once we approve
+              your firm, they can sign up with these addresses and they'll be
+              let in automatically.
+            </p>
+            <EmailRows
+              rows={emails}
+              onChange={(next) => {
+                setEmails(next);
+                setError(null);
+              }}
+              lockedEmail={email}
             />
-          </label>
+          </fieldset>
           <p className="muted small">
-            {others.length + 1} {others.length ? "accounts" : "account"} including
-            you. Plans are priced by firm size:
+            {seats} {seats === 1 ? "account" : "accounts"} including you. Plans
+            are priced by firm size:
           </p>
-          <PricingTiers seats={others.length + 1} />
+          <PricingTiers seats={seats} />
+          {isCustomSize(seats) && (
+            <p className="muted small pricing-custom">
+              Over {MAX_LISTED_SEATS} accounts? Send the request anyway and
+              we'll quote you a custom price.
+            </p>
+          )}
           <p className="muted small">
-            Billed monthly. The first month includes a one-time $
-            {SETUP_FEE_USD} setup fee. Your plan is confirmed when your request
-            is approved.
+            Pay monthly (the first month includes a one-time {usd(SETUP_FEE_USD)}{" "}
+            setup fee) or annually: one month free every year and no setup fee.
+            You'll choose when you subscribe, after your request is approved.
           </p>
           <label>
             Anything we should know? (optional)
@@ -290,7 +315,7 @@ export function NoFirm({
 
 /** The three plans, with the one matching `seats` highlighted. */
 function PricingTiers({ seats }: { seats: number }) {
-  const current = tierForSeats(seats);
+  const current = isCustomSize(seats) ? null : tierForSeats(seats);
   return (
     <ul className="pricing-tiers" aria-label="Plans">
       {TIERS.map((t) => (
@@ -298,13 +323,69 @@ function PricingTiers({ seats }: { seats: number }) {
           <span className="pricing-name">{TIER_LABEL[t]}</span>
           <span className="pricing-seats">{tierSeatsText(t)}</span>
           <span className="pricing-price">
-            ${TIER_PRICE_USD[t]}
+            {usd(TIER_PRICE_USD[t])}
             <span className="pricing-per">/month</span>
           </span>
+          <span className="pricing-annual">or {usd(annualPriceUsd(t))}/year</span>
           {t === current && <span className="pricing-tag">Your size</span>}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Monthly vs annual, with what the first payment will be for each. */
+function IntervalChoice({
+  tier,
+  first,
+  value,
+  onChange,
+}: {
+  tier: Tier;
+  first: boolean;
+  value: BillingInterval;
+  onChange: (v: BillingInterval) => void;
+}) {
+  const monthly = TIER_PRICE_USD[tier];
+  const options: { id: BillingInterval; title: string; price: string; detail: string; tag?: string }[] = [
+    {
+      id: "year",
+      title: "Annual",
+      price: `${usd(annualPriceUsd(tier))}/year`,
+      detail: first
+        ? "One month free every year, and no setup fee."
+        : "One month free every year.",
+      tag: "1 month free",
+    },
+    {
+      id: "month",
+      title: "Monthly",
+      price: `${usd(monthly)}/month`,
+      detail: first
+        ? `First payment ${usd(monthly + SETUP_FEE_USD)}, including a one-time ${usd(SETUP_FEE_USD)} setup fee.`
+        : "Billed every month.",
+    },
+  ];
+  return (
+    <div className="interval-choice" role="radiogroup" aria-label="Billing">
+      {options.map((o) => (
+        <label key={o.id} className={`interval-option${value === o.id ? " is-selected" : ""}`}>
+          <input
+            type="radio"
+            name="billing-interval"
+            value={o.id}
+            checked={value === o.id}
+            onChange={() => onChange(o.id)}
+          />
+          <span className="interval-head">
+            <span className="interval-title">{o.title}</span>
+            {o.tag && <span className="interval-tag">{o.tag}</span>}
+          </span>
+          <span className="interval-price">{o.price}</span>
+          <span className="interval-detail">{o.detail}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 
@@ -341,6 +422,7 @@ export function SubscriptionInactive({
   const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(returnedFromCheckout);
+  const [interval, setInterval_] = useState<BillingInterval>("year");
   const canPay = isBillingContact(firm, email);
 
   // Stripe confirms payment to our webhook a moment after redirecting back,
@@ -364,7 +446,7 @@ export function SubscriptionInactive({
     setError(null);
     try {
       window.location.href =
-        kind === "portal" ? await portalUrl() : await checkoutUrl();
+        kind === "portal" ? await portalUrl() : await checkoutUrl(undefined, interval);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setBusy(null);
@@ -408,7 +490,7 @@ export function SubscriptionInactive({
           access is restored as soon as the subscription is active again.
         </p>
         {canPay ? (
-          <p className="billing-actions">
+          <div className="billing-actions subscribe-actions">
             {fixInPortal ? (
               <button className="btn primary" disabled={!!busy} onClick={() => go("portal")}>
                 {busy === "portal" ? "Opening…" : "Update payment method"}
@@ -417,20 +499,21 @@ export function SubscriptionInactive({
               isTier(firm.tier) ? (
                 <>
                   <span className="muted small">
-                    Your plan: {tierDescription(firm.tier)}, $
-                    {TIER_PRICE_USD[firm.tier]}/month.
-                    {/* Server rule (owesSetupFee): first subscription only. */}
-                    {!firm.stripe_subscription_id && (
-                      <>
-                        {" "}Your first payment is $
-                        {TIER_PRICE_USD[firm.tier] + SETUP_FEE_USD}, including a
-                        one-time ${SETUP_FEE_USD} setup fee.
-                      </>
-                    )}
+                    Your plan: {tierDescription(firm.tier)}.
                   </span>
-                  <br />
+                  <IntervalChoice
+                    tier={firm.tier}
+                    // Server rule (owesSetupFee): first subscription only.
+                    first={!firm.stripe_subscription_id}
+                    value={interval}
+                    onChange={setInterval_}
+                  />
                   <button className="btn primary" disabled={!!busy} onClick={() => go("checkout")}>
-                    {busy === "checkout" ? "Opening…" : "Subscribe"}
+                    {busy === "checkout"
+                      ? "Opening…"
+                      : interval === "year"
+                        ? "Subscribe annually"
+                        : "Subscribe monthly"}
                   </button>
                 </>
               ) : (
@@ -440,7 +523,7 @@ export function SubscriptionInactive({
                 </span>
               )
             )}
-          </p>
+          </div>
         ) : (
           <p className="muted small">
             Questions about billing? Contact{" "}
