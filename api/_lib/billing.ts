@@ -228,8 +228,8 @@ export async function runCheckout(body: CheckoutBody, userId: string): Promise<R
   }
 
   // One live subscription per firm: changes go through the billing portal.
-  // unpaid/paused/incomplete still exist in Stripe and are fixed in the
-  // portal, not by starting a second subscription.
+  // unpaid/paused still exist in Stripe and are fixed in the portal, not by
+  // starting a second subscription.
   if (firm.stripe_subscription_id && LIVE_STATUSES.has(firm.stripe_status ?? "")) {
     return {
       status: 409,
@@ -344,8 +344,12 @@ function periodEnd(sub: Stripe.Subscription): number | null {
 
 const TERMINAL = new Set(["canceled", "incomplete_expired"]);
 
-/** Subscription statuses that still exist in Stripe (may bill or be fixed). */
-const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "paused", "incomplete"]);
+/**
+ * Subscription statuses that still exist in Stripe (may bill or be fixed in
+ * the portal). Not "incomplete": a first payment that failed partway (e.g. a
+ * declined bank check) must not stop the firm from simply trying again.
+ */
+const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "paused"]);
 
 /**
  * True when the subscription is set to end later. The billing portal (current
